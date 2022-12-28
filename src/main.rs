@@ -10,7 +10,8 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(required = true)]
+    /// The directory to calculate the size of. If not specified, the current directory is used.
+    #[arg(default_value = ".")]
     dir: PathBuf,
 }
 
@@ -19,9 +20,22 @@ fn recursive_dir_size(dir: &Path) -> io::Result<u64> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
-            size += recursive_dir_size(&entry.path())?;
+            size += recursive_dir_size(&entry.path()).unwrap_or_else(|e| {
+                eprintln!(
+                    "Error while reading directory {}: {}",
+                    entry.path().display(),
+                    e
+                );
+                0
+            });
         } else {
-            size += entry.metadata()?.len();
+            size += entry.metadata().map_or_else(
+                |e| {
+                    eprintln!("Error while reading file {}: {}", entry.path().display(), e);
+                    0
+                },
+                |f| f.len(),
+            );
         }
     }
     Ok(size)
@@ -41,7 +55,6 @@ fn size_in_bytes_pretty_string(size: u64) -> String {
 fn main() {
     let args = Args::parse();
     let canon_dir = dunce::canonicalize(&args.dir).unwrap();
-    println!("working...");
     let size = recursive_dir_size(&canon_dir).unwrap();
     println!(
         "{}: {}",
