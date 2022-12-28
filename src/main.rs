@@ -22,16 +22,15 @@ fn recursive_dir_size(dir: &Path) -> io::Result<u64> {
         if entry.file_type()?.is_dir() {
             size += recursive_dir_size(&entry.path()).unwrap_or_else(|e| {
                 eprintln!(
-                    "Error while reading directory {}: {}",
-                    entry.path().display(),
-                    e
+                    "Error while reading directory {}: {e}",
+                    entry.path().display()
                 );
                 0
             });
         } else {
             size += entry.metadata().map_or_else(
                 |e| {
-                    eprintln!("Error while reading file {}: {}", entry.path().display(), e);
+                    eprintln!("Error while reading file {}: {e}", entry.path().display());
                     0
                 },
                 |f| f.len(),
@@ -44,21 +43,21 @@ fn recursive_dir_size(dir: &Path) -> io::Result<u64> {
 fn size_in_bytes_pretty_string(size: u64) -> String {
     const SIZES: [&str; 4] = ["B", "KB", "MB", "GB"];
     let mut i = 0;
+    // if you have this much data... god help you
+    #[allow(clippy::cast_precision_loss)]
     let mut size = size as f64;
     while i < 4 && size >= 1024.0 {
         size /= 1024.0;
         i += 1;
     }
-    format!("{:.2} {}", size, SIZES[i])
+    let size_str = SIZES[i];
+    format!("{size:.2} {size_str}")
 }
 
 fn main() {
     let args = Args::parse();
-    let canon_dir = dunce::canonicalize(&args.dir).unwrap();
+    let canon_dir = dunce::canonicalize(args.dir).unwrap();
     let size = recursive_dir_size(&canon_dir).unwrap();
-    println!(
-        "{}: {}",
-        canon_dir.display(),
-        size_in_bytes_pretty_string(size)
-    );
+    let size_str = size_in_bytes_pretty_string(size);
+    println!("{}: {size_str}", canon_dir.display());
 }
