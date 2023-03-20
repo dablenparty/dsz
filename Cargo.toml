@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.0.29", features = ["derive"] }
 dunce = "1.0.3"
+num-format = "0.4.4"

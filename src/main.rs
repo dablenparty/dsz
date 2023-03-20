@@ -6,11 +6,12 @@ use std::{
 };
 
 use clap::Parser;
+use num_format::{ToFormattedString, Locale};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// The directory to calculate the size of. If not specified, the current directory is used.
+    /// The directory to calculate the size of.
     #[arg(default_value = ".")]
     dir: PathBuf,
 }
@@ -63,7 +64,8 @@ fn main() {
     let canon_dir = dunce::canonicalize(args.dir).unwrap();
     let (size, file_count) = recursive_dir_size(&canon_dir).unwrap();
     let size_str = size_in_bytes_pretty_string(size);
+    let file_count_str = file_count.to_formatted_string(&Locale::en);
     println!("{}", canon_dir.display());
-    println!("{file_count} files");
+    println!("{file_count_str} files");
     println!("{size_str}");
 }
