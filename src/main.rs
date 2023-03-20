@@ -15,18 +15,21 @@ struct Args {
     dir: PathBuf,
 }
 
-fn recursive_dir_size(dir: &Path) -> io::Result<u64> {
+fn recursive_dir_size(dir: &Path) -> io::Result<(u64, u64)> {
     let mut size = 0;
+    let mut file_count = 0;
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
-            size += recursive_dir_size(&entry.path()).unwrap_or_else(|e| {
+            let (inner_size, inner_count) = recursive_dir_size(&entry.path()).unwrap_or_else(|e| {
                 eprintln!(
                     "Error while reading directory {}: {e}",
                     entry.path().display()
                 );
-                0
+                (0, 0)
             });
+            size += inner_size;
+            file_count += inner_count;
         } else {
             size += entry.metadata().map_or_else(
                 |e| {
@@ -35,9 +38,10 @@ fn recursive_dir_size(dir: &Path) -> io::Result<u64> {
                 },
                 |f| f.len(),
             );
+            file_count += 1;
         }
     }
-    Ok(size)
+    Ok((size, file_count))
 }
 
 fn size_in_bytes_pretty_string(size: u64) -> String {
@@ -57,7 +61,9 @@ fn size_in_bytes_pretty_string(size: u64) -> String {
 fn main() {
     let args = Args::parse();
     let canon_dir = dunce::canonicalize(args.dir).unwrap();
-    let size = recursive_dir_size(&canon_dir).unwrap();
+    let (size, file_count) = recursive_dir_size(&canon_dir).unwrap();
     let size_str = size_in_bytes_pretty_string(size);
-    println!("{}: {size_str}", canon_dir.display());
+    println!("{}", canon_dir.display());
+    println!("{file_count} files");
+    println!("{size_str}");
 }
