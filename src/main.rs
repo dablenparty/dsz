@@ -1,12 +1,10 @@
 #![warn(clippy::all, clippy::pedantic)]
 
-use std::{
-    fs, io,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
-use num_format::{ToFormattedString, Locale};
+use num_format::{Locale, ToFormattedString};
+use rayon::prelude::*;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -16,33 +14,30 @@ struct Args {
     dir: PathBuf,
 }
 
-fn recursive_dir_size(dir: &Path) -> io::Result<(u64, u64)> {
-    let mut size = 0;
-    let mut file_count = 0;
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        if entry.file_type()?.is_dir() {
-            let (inner_size, inner_count) = recursive_dir_size(&entry.path()).unwrap_or_else(|e| {
-                eprintln!(
-                    "Error while reading directory {}: {e}",
-                    entry.path().display()
-                );
-                (0, 0)
-            });
-            size += inner_size;
-            file_count += inner_count;
-        } else {
-            size += entry.metadata().map_or_else(
+/// Computes the size of a directory, returning the size in bytes and the number of files.
+/// This function is parallelized using rayon.
+///
+/// # Arguments
+///
+/// * `dir` - The directory to calculate the size of.
+fn parallel_dir_size(dir: &Path) -> (u64, u64) {
+    let walker: Vec<u64> = walkdir::WalkDir::new(dir)
+        .into_iter()
+        .par_bridge()
+        .filter_map(std::result::Result::ok)
+        .filter(|e| !e.path_is_symlink() && e.file_type().is_file())
+        .map(|entry| {
+            entry.metadata().map_or_else(
                 |e| {
                     eprintln!("Error while reading file {}: {e}", entry.path().display());
                     0
                 },
                 |f| f.len(),
-            );
-            file_count += 1;
-        }
-    }
-    Ok((size, file_count))
+            )
+        })
+        .collect();
+    let size = walker.iter().sum();
+    (size, walker.len() as u64)
 }
 
 fn size_in_bytes_pretty_string(size: u64) -> String {
@@ -62,10 +57,10 @@ fn size_in_bytes_pretty_string(size: u64) -> String {
 fn main() {
     let args = Args::parse();
     let canon_dir = dunce::canonicalize(args.dir).unwrap();
-    let (size, file_count) = recursive_dir_size(&canon_dir).unwrap();
+    println!("{}", canon_dir.display());
+    let (size, file_count) = parallel_dir_size(&canon_dir);
     let size_str = size_in_bytes_pretty_string(size);
     let file_count_str = file_count.to_formatted_string(&Locale::en);
-    println!("{}", canon_dir.display());
     println!("{file_count_str} files");
     println!("{size_str}");
 }
