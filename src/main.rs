@@ -41,12 +41,13 @@ fn parallel_dir_size(dir: &Path) -> (u64, u64) {
 }
 
 fn size_in_bytes_pretty_string(size: u64) -> String {
-    const SIZES: [&str; 4] = ["B", "KB", "MB", "GB"];
+    const SIZES_SIZE: usize = 5;
+    const SIZES: [&str; SIZES_SIZE] = ["B", "KB", "MB", "GB", "TB"];
     let mut i = 0;
     // if you have this much data... god help you
     #[allow(clippy::cast_precision_loss)]
     let mut size = size as f64;
-    while i < 4 && size >= 1024.0 {
+    while i < SIZES_SIZE && size >= 1024.0 {
         size /= 1024.0;
         i += 1;
     }
