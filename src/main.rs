@@ -10,16 +10,19 @@ use itertools::Itertools;
 use num_format::{Locale, ToFormattedString};
 use rayon::prelude::*;
 
+/// dsz, short for directory size, does as its name suggests: it calculates the size of a directory by
+/// summing the sizes of all files in it. dsz can also generate a visual tree of the directory,
+/// given you're on a terminal that supports unicode.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// The directory to calculate the size of.
     #[arg(default_value = ".")]
     dir: PathBuf,
-    /// Whether to print a tree of the directory. Optionally, specify the depth of the tree. (default: 1)
+    /// Display the directory tree, up to <TREE> depth. [default: 1]
     #[arg(short, long, num_args = 0..=1, require_equals = true, default_missing_value = "1")]
     tree: Option<usize>,
-    /// Whether to include hidden files in the tree. (ignored if --tree is not specified)
+    /// Exclude hidden files from the tree. (ignored if --tree is not specified)
     #[arg(short, long)]
     no_hidden: bool,
 }
