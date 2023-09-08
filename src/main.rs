@@ -26,9 +26,14 @@ fn generate_tree_string(root: &Path, depth: usize) -> String {
     const BRANCH: &str = "├───";
     const BRANCH_LAST: &str = "└───";
 
+    // sorts by directories first, then by name
     let walker = walkdir::WalkDir::new(root)
-        .sort_by_key(|e| e.path().is_dir())
-        .sort_by_file_name()
+        .sort_by(|a, b| {
+            b.path()
+                .is_dir()
+                .cmp(&a.path().is_dir())
+                .then_with(|| a.file_name().cmp(b.file_name()))
+        })
         .max_depth(depth)
         .into_iter()
         .filter_map(std::result::Result::ok);
@@ -112,13 +117,18 @@ fn main() {
     let args = Args::parse();
     let canon_dir = dunce::canonicalize(args.dir).unwrap();
     println!("{}", canon_dir.display());
+    // TODO: symbols
+    let mut sp = spinners::Spinner::new(spinners::Spinners::Point, "Calculating size...".into());
     let (size, file_count) = parallel_dir_size(&canon_dir);
+    sp.stop_with_message("Calculated size!".into());
     let size_str = size_in_bytes_pretty_string(size);
     let file_count_str = file_count.to_formatted_string(&Locale::en);
     if let Some(tree_depth) = args.tree {
+        let mut sp = spinners::Spinner::new(spinners::Spinners::Point, "Generating tree...".into());
         let tree_string = generate_tree_string(&canon_dir, tree_depth);
+        sp.stop_with_message("Generated tree!".into());
         println!("{tree_string}");
     }
-    println!("{file_count_str} files");
+    println!("{file_count_str} files evaluated");
     println!("{size_str}");
 }
