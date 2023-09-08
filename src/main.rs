@@ -1,8 +1,12 @@
 #![warn(clippy::all, clippy::pedantic)]
 
-use std::path::{Path, PathBuf};
+use std::{
+    iter,
+    path::{Path, PathBuf},
+};
 
 use clap::Parser;
+use itertools::Itertools;
 use num_format::{Locale, ToFormattedString};
 use rayon::prelude::*;
 
@@ -12,6 +16,55 @@ struct Args {
     /// The directory to calculate the size of.
     #[arg(default_value = ".")]
     dir: PathBuf,
+    /// Whether to print a tree of the directory. Optionally, specify the depth of the tree.
+    #[arg(short, long, num_args = 0..=1, require_equals = true, default_missing_value = "1")]
+    tree: Option<usize>,
+}
+
+fn generate_tree_string(root: &Path, depth: usize) -> String {
+    const INDENT: &str = "│   ";
+    const BRANCH: &str = "├───";
+    const BRANCH_LAST: &str = "└───";
+
+    let walker = walkdir::WalkDir::new(root)
+        .sort_by_key(|e| e.path().is_dir())
+        .sort_by_file_name()
+        .max_depth(depth)
+        .into_iter()
+        .filter_map(std::result::Result::ok);
+    iter::once(None)
+        .chain(walker.map(Some))
+        .chain(iter::once(None))
+        .tuple_windows::<(_, _)>()
+        .filter_map(|(entry, next_entry)| {
+            let entry = entry?;
+            let path = entry.path();
+            let path_components_count = path.components().count();
+            let depth_diff = path_components_count - root.components().count();
+            if depth_diff == 0 {
+                return None;
+            }
+            let (indent, branch) = match next_entry {
+                Some(next_entry) => {
+                    let indent = INDENT.repeat(depth_diff - 1);
+                    if next_entry.path().components().count() < path_components_count {
+                        (indent, BRANCH_LAST)
+                    } else {
+                        (indent, BRANCH)
+                    }
+                }
+                None => (BRANCH_LAST.repeat(depth_diff - 1), BRANCH_LAST),
+            };
+            let path_str = path.file_name()?.to_string_lossy();
+            let spacer = if entry.file_type().is_dir() {
+                " /"
+            } else {
+                " "
+            };
+            Some(format!("{indent}{branch}{spacer}{path_str}"))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Computes the size of a directory, returning the size in bytes and the number of files.
@@ -62,6 +115,10 @@ fn main() {
     let (size, file_count) = parallel_dir_size(&canon_dir);
     let size_str = size_in_bytes_pretty_string(size);
     let file_count_str = file_count.to_formatted_string(&Locale::en);
+    if let Some(tree_depth) = args.tree {
+        let tree_string = generate_tree_string(&canon_dir, tree_depth);
+        println!("{tree_string}");
+    }
     println!("{file_count_str} files");
     println!("{size_str}");
 }
