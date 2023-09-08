@@ -16,12 +16,25 @@ struct Args {
     /// The directory to calculate the size of.
     #[arg(default_value = ".")]
     dir: PathBuf,
-    /// Whether to print a tree of the directory. Optionally, specify the depth of the tree.
+    /// Whether to print a tree of the directory. Optionally, specify the depth of the tree. (default: 1)
     #[arg(short, long, num_args = 0..=1, require_equals = true, default_missing_value = "1")]
     tree: Option<usize>,
+    /// Whether to include hidden files in the tree. (ignored if --tree is not specified)
+    #[arg(short, long)]
+    no_hidden: bool,
 }
 
-fn generate_tree_string(root: &Path, depth: usize) -> String {
+/// Generates a tree of the directory, up to the specified depth. This function is not parallelized.
+///
+/// # Arguments
+///
+/// * `root` - The directory to generate the tree of.
+/// * `depth` - The depth of the tree to generate.
+/// * `no_hidden` - Whether to include hidden files in the tree.
+///
+/// # Returns
+/// The tree as a string.
+fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool) -> String {
     const INDENT: &str = "│   ";
     const BRANCH: &str = "├───";
     const BRANCH_LAST: &str = "└───";
@@ -36,6 +49,7 @@ fn generate_tree_string(root: &Path, depth: usize) -> String {
         })
         .max_depth(depth)
         .into_iter()
+        .filter_entry(|e| !no_hidden || e.file_name().to_str().is_some_and(|s| !s.starts_with('.')))
         .filter_map(std::result::Result::ok);
     iter::once(None)
         .chain(walker.map(Some))
@@ -47,7 +61,7 @@ fn generate_tree_string(root: &Path, depth: usize) -> String {
             let path_components_count = path.components().count();
             let depth_diff = path_components_count - root.components().count();
             if depth_diff == 0 {
-                return None;
+                return Some(path.display().to_string());
             }
             let (indent, branch) = match next_entry {
                 Some(next_entry) => {
@@ -116,7 +130,6 @@ fn size_in_bytes_pretty_string(size: u64) -> String {
 fn main() {
     let args = Args::parse();
     let canon_dir = dunce::canonicalize(args.dir).unwrap();
-    println!("{}", canon_dir.display());
     // TODO: symbols
     let mut sp = spinners::Spinner::new(spinners::Spinners::Point, "Calculating size...".into());
     let (size, file_count) = parallel_dir_size(&canon_dir);
@@ -125,9 +138,11 @@ fn main() {
     let file_count_str = file_count.to_formatted_string(&Locale::en);
     if let Some(tree_depth) = args.tree {
         let mut sp = spinners::Spinner::new(spinners::Spinners::Point, "Generating tree...".into());
-        let tree_string = generate_tree_string(&canon_dir, tree_depth);
+        let tree_string = generate_tree_string(&canon_dir, tree_depth, args.no_hidden);
         sp.stop_with_message("Generated tree!".into());
         println!("{tree_string}");
+    } else {
+        println!("{}", canon_dir.display());
     }
     println!("{file_count_str} files evaluated");
     println!("{size_str}");
