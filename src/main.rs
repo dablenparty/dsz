@@ -27,6 +27,9 @@ struct Args {
     /// Exclude hidden files from the tree. (ignored if --tree is not specified)
     #[arg(short, long)]
     no_hidden: bool,
+    /// Display the size of files/folders in the tree. WARNING: this may be slow. (ignored if --tree is not specified)
+    #[arg(short, long)]
+    size_in_tree: bool,
 }
 
 /// Checks if a string can be parsed into a `usize` and is greater than 1, returning an error if it can't.
@@ -85,7 +88,7 @@ fn check_tree_depth(s: &str) -> Result<usize, String> {
 ///
 /// # Returns
 /// The tree as a string.
-fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool) -> String {
+fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool, show_size: bool) -> String {
     const INDENT: &str = "│   ";
     const BRANCH: &str = "├───";
     const BRANCH_LAST: &str = "└───";
@@ -125,13 +128,25 @@ fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool) -> String {
                 }
                 None => (BRANCH_LAST.repeat(depth_diff - 1), BRANCH_LAST),
             };
-            let path_str = path.file_name()?.to_string_lossy();
+            let file_name = path.file_name()?.to_string_lossy();
             let spacer = if entry.file_type().is_dir() {
                 " /"
             } else {
                 " "
             };
-            Some(format!("{indent}{branch}{spacer}{path_str}"))
+            let size_str = if show_size {
+                let metadata = entry.metadata().unwrap();
+                let size = if metadata.is_dir() {
+                    let (size, _) = parallel_dir_size(path);
+                    size
+                } else {
+                    metadata.len()
+                };
+                format!(" - {}", size_in_bytes_pretty_string(size))
+            } else {
+                String::new()
+            };
+            Some(format!("{indent}{branch}{spacer}{file_name}{size_str}"))
         })
         .collect::<Vec<_>>()
         .join("\n")
@@ -202,7 +217,8 @@ fn main() {
     let file_count_str = file_count.to_formatted_string(&Locale::en);
     if let Some(tree_depth) = args.tree {
         let mut sp = spinners::Spinner::new(spinners::Spinners::Point, "Generating tree...".into());
-        let tree_string = generate_tree_string(&canon_dir, tree_depth, args.no_hidden);
+        let tree_string =
+            generate_tree_string(&canon_dir, tree_depth, args.no_hidden, args.size_in_tree);
         sp.stop_with_message("Generated tree!".into());
         println!("{tree_string}");
     } else {
