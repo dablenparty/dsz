@@ -2,13 +2,15 @@
 
 use std::{
     iter,
+    num::{IntErrorKind, ParseIntError},
+    ops::RangeInclusive,
     path::{Path, PathBuf},
 };
 
 use clap::Parser;
 use itertools::Itertools;
 use num_format::{Locale, ToFormattedString};
-use rayon::prelude::*;
+use rayon::prelude::{ParallelBridge, ParallelIterator};
 
 /// dsz, short for directory size, does as its name suggests: it calculates the size of a directory by
 /// summing the sizes of all files in it. dsz can also generate a visual tree of the directory,
@@ -20,11 +22,57 @@ struct Args {
     #[arg(default_value = ".")]
     dir: PathBuf,
     /// Display the directory tree, up to <TREE> depth. [default: 1]
-    #[arg(short, long, num_args = 0..=1, require_equals = true, default_missing_value = "1")]
+    #[arg(short, long, value_parser = check_tree_depth, num_args = 0..=1, require_equals = true, default_missing_value = "1")]
     tree: Option<usize>,
     /// Exclude hidden files from the tree. (ignored if --tree is not specified)
     #[arg(short, long)]
     no_hidden: bool,
+}
+
+/// Checks if a string can be parsed into a `usize` and is greater than 1, returning an error if it can't.
+///
+/// This function is used as a value parser for clap and is not meant to be used directly, but the point
+/// of it is to provide a more helpful error message than the default messages.
+///
+/// # Arguments
+///
+/// * `s` - The string to parse.
+///
+/// # Returns
+///
+/// The parsed value, or an error if the string couldn't be parsed or the value was less than 1.
+fn check_tree_depth(s: &str) -> Result<usize, String> {
+    // insane? yes. does it work? also yes, as long as your computer doesn't explode.
+    const TREE_RANGE: RangeInclusive<usize> = 1..=usize::MAX;
+    s.parse()
+        .map_err(|err: ParseIntError| match err.kind() {
+            IntErrorKind::Empty => {
+                "No value provided. Either provide a value or remove the '=' from the flag.".into()
+            }
+            IntErrorKind::PosOverflow => {
+                format!("Tree depth must be less than {}", TREE_RANGE.end())
+            }
+            IntErrorKind::InvalidDigit => {
+                // I could just check the first character, but this way gives a more helpful error message
+                if let Ok(digit) = s.parse::<i64>() {
+                    if digit < 0 {
+                        return "Negative values are not allowed".into();
+                    }
+                };
+                err.to_string()
+            }
+            _ => err.to_string(),
+        })
+        .and_then(|depth| {
+            if TREE_RANGE.contains(&depth) {
+                Ok(depth)
+            } else {
+                Err(format!(
+                    "Tree depth must be greater than {}",
+                    TREE_RANGE.start()
+                ))
+            }
+        })
 }
 
 /// Generates a tree of the directory, up to the specified depth. This function is not parallelized.
@@ -95,6 +143,10 @@ fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool) -> String {
 /// # Arguments
 ///
 /// * `dir` - The directory to calculate the size of.
+///
+/// # Returns
+///
+/// A tuple containing the size (in bytes) and the number of files.
 fn parallel_dir_size(dir: &Path) -> (u64, u64) {
     let walker: Vec<u64> = walkdir::WalkDir::new(dir)
         .into_iter()
