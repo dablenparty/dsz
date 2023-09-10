@@ -194,7 +194,11 @@ fn size_in_bytes_pretty_string(size: u64) -> String {
         i += 1;
     }
     let size_str = SIZES[i];
-    format!("{size:.2} {size_str}")
+    if i == 0 {
+        format!("{size} {size_str}")
+    } else {
+        format!("{size:.2} {size_str}")
+    }
 }
 
 fn main() {
