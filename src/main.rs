@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use clap::Parser;
+use clap::{Parser, ValueHint};
 use itertools::Itertools;
 use num_format::{Locale, ToFormattedString};
 use rayon::prelude::{ParallelBridge, ParallelIterator};
@@ -19,10 +19,10 @@ use rayon::prelude::{ParallelBridge, ParallelIterator};
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// The directory to calculate the size of.
-    #[arg(default_value = ".")]
+    #[arg(default_value = ".", value_hint = ValueHint::DirPath)]
     dir: PathBuf,
     /// Display the directory tree, up to <TREE> depth. [default: 1]
-    #[arg(short, long, value_parser = check_tree_depth, num_args = 0..=1, require_equals = true, default_missing_value = "1")]
+    #[arg(short, long, value_hint = ValueHint::Other, value_parser = check_tree_depth, num_args = 0..=1, require_equals = true, default_missing_value = "1")]
     tree: Option<usize>,
     /// Exclude hidden files from the tree. (ignored if --tree is not specified)
     #[arg(short, long)]
@@ -93,9 +93,13 @@ fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool, show_size: b
     const BRANCH: &str = "├───";
     const BRANCH_LAST: &str = "└───";
 
-    // sorts by directories first, then by name
-    let walker = walkdir::WalkDir::new(root)
+    // these long and funky iterators are used to make a sliding window of the entries in
+    // the walker that guarantees every entry will appear in the left side of the window
+    // exactly once. this means that we can use the next entry to determine if the current
+    // entry is the last entry in the directory and display the correct branch symbol.
+    walkdir::WalkDir::new(root)
         .sort_by(|a, b| {
+            // sorts by directories first, then by name
             b.path()
                 .is_dir()
                 .cmp(&a.path().is_dir())
@@ -104,9 +108,8 @@ fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool, show_size: b
         .max_depth(depth)
         .into_iter()
         .filter_entry(|e| !no_hidden || e.file_name().to_str().is_some_and(|s| !s.starts_with('.')))
-        .filter_map(std::result::Result::ok);
-    iter::once(None)
-        .chain(walker.map(Some))
+        .filter_map(std::result::Result::ok)
+        .map(Some)
         .chain(iter::once(None))
         .tuple_windows::<(_, _)>()
         .filter_map(|(entry, next_entry)| {
@@ -128,19 +131,17 @@ fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool, show_size: b
                 }
                 None => (BRANCH_LAST.repeat(depth_diff - 1), BRANCH_LAST),
             };
+            // everything should be canonicalized at this point BUT just in case...
             let file_name = path.file_name()?.to_string_lossy();
-            let spacer = if entry.file_type().is_dir() {
-                " /"
-            } else {
-                " "
-            };
+            let entry_is_dir = entry.file_type().is_dir();
+            let spacer = if entry_is_dir { " /" } else { " " };
             let size_str = if show_size {
-                let metadata = entry.metadata().unwrap();
-                let size = if metadata.is_dir() {
+                let size = if entry_is_dir {
                     let (size, _) = parallel_dir_size(path);
                     size
                 } else {
-                    metadata.len()
+                    // at this point, the metadata should be readable, so we can unwrap
+                    entry.metadata().unwrap().len()
                 };
                 format!(" - {}", size_in_bytes_pretty_string(size))
             } else {
