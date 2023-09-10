@@ -10,7 +10,6 @@ use std::{
 use clap::{Parser, ValueHint};
 use itertools::Itertools;
 use num_format::{Locale, ToFormattedString};
-use rayon::prelude::{ParallelBridge, ParallelIterator};
 
 /// dsz, short for directory size, does as its name suggests: it calculates the size of a directory by
 /// summing the sizes of all files in it. dsz can also generate a visual tree of the directory,
@@ -117,6 +116,7 @@ fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool, show_size: b
             let path = entry.path();
             let path_components_count = path.components().count();
             let depth_diff = path_components_count - root.components().count();
+            // the root! show the root!
             if depth_diff == 0 {
                 return Some(path.display().to_string());
             }
@@ -137,7 +137,7 @@ fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool, show_size: b
             let spacer = if entry_is_dir { " /" } else { " " };
             let size_str = if show_size {
                 let size = if entry_is_dir {
-                    let (size, _) = parallel_dir_size(path);
+                    let (size, _) = dir_size(path);
                     size
                 } else {
                     // at this point, the metadata should be readable, so we can unwrap
@@ -149,7 +149,6 @@ fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool, show_size: b
             };
             Some(format!("{indent}{branch}{spacer}{file_name}{size_str}"))
         })
-        .collect::<Vec<_>>()
         .join("\n")
 }
 
@@ -163,12 +162,13 @@ fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool, show_size: b
 /// # Returns
 ///
 /// A tuple containing the size (in bytes) and the number of files.
-fn parallel_dir_size(dir: &Path) -> (u64, u64) {
-    let walker: Vec<u64> = walkdir::WalkDir::new(dir)
+fn dir_size(dir: &Path) -> (u64, u64) {
+    // rayon could parallelize this, but it needs par_bridge() and ends up being slower
+    // than just doing it sequentially
+    let file_sizes: Vec<u64> = walkdir::WalkDir::new(dir)
         .into_iter()
-        .par_bridge()
         .filter_map(std::result::Result::ok)
-        .filter(|e| !e.path_is_symlink() && e.file_type().is_file())
+        .filter(|e| e.file_type().is_file())
         .map(|entry| {
             entry.metadata().map_or_else(
                 |e| {
@@ -179,8 +179,9 @@ fn parallel_dir_size(dir: &Path) -> (u64, u64) {
             )
         })
         .collect();
-    let size = walker.iter().sum();
-    (size, walker.len() as u64)
+    // parallelizing this part makes very little difference
+    let size = file_sizes.iter().sum();
+    (size, file_sizes.len() as u64)
 }
 
 fn size_in_bytes_pretty_string(size: u64) -> String {
@@ -216,7 +217,7 @@ fn main() {
         dunce::canonicalize(args.dir).expect("A fatal error occurred while reading the directory");
     // TODO: symbols
     let mut sp = spinners::Spinner::new(spinners::Spinners::Point, "Calculating size...".into());
-    let (size, file_count) = parallel_dir_size(&canon_dir);
+    let (size, file_count) = dir_size(&canon_dir);
     sp.stop_with_message("Calculated size!".into());
     let size_str = size_in_bytes_pretty_string(size);
     let file_count_str = file_count.to_formatted_string(&Locale::en);
