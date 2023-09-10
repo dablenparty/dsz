@@ -184,7 +184,16 @@ fn size_in_bytes_pretty_string(size: u64) -> String {
 
 fn main() {
     let args = Args::parse();
-    let canon_dir = dunce::canonicalize(args.dir).unwrap();
+    // TODO: better error handling, this is just a quick and dirty solution
+    if !args.dir.exists() {
+        eprintln!("error: {} does not exist", args.dir.display());
+        std::process::exit(1);
+    } else if !args.dir.is_dir() {
+        eprintln!("error: {} is not a directory", args.dir.display());
+        std::process::exit(1);
+    }
+    let canon_dir =
+        dunce::canonicalize(args.dir).expect("A fatal error occurred while reading the directory");
     // TODO: symbols
     let mut sp = spinners::Spinner::new(spinners::Spinners::Point, "Calculating size...".into());
     let (size, file_count) = parallel_dir_size(&canon_dir);
