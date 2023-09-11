@@ -3,7 +3,7 @@
 use std::{
     iter,
     num::{IntErrorKind, ParseIntError},
-    ops::RangeInclusive,
+    ops::{Mul, RangeInclusive},
     path::{Path, PathBuf},
 };
 
@@ -184,6 +184,16 @@ fn dir_size(dir: &Path) -> (u64, u64) {
     (size, file_sizes.len() as u64)
 }
 
+/// Makes a string from a size in bytes (up to TB), rounding to the nearest 2 decimal places.
+/// If the rounded size has trailing zeros, they are removed (e.g. 1.00 MB -> 1 MB).
+///
+/// # Arguments
+///
+/// * `size` - The size in bytes.
+///
+/// # Returns
+///
+/// The size as a string, with the appropriate unit.
 fn size_in_bytes_pretty_string(size: u64) -> String {
     const SIZES_SIZE: usize = 5;
     const SIZES: [&str; SIZES_SIZE] = ["B", "KB", "MB", "GB", "TB"];
@@ -195,11 +205,13 @@ fn size_in_bytes_pretty_string(size: u64) -> String {
         size /= 1024.0;
         i += 1;
     }
-    let size_str = SIZES[i];
-    if i == 0 {
-        format!("{size} {size_str}")
+    let size_abbrv = SIZES[i];
+    // checks if the first two digits after the decimal point round to 0
+    let first_two_fract = size.fract().mul(100.0).round();
+    if first_two_fract == 0.0 {
+        format!("{size} {size_abbrv}")
     } else {
-        format!("{size:.2} {size_str}")
+        format!("{size:.2} {size_abbrv}")
     }
 }
 
