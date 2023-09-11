@@ -140,8 +140,8 @@ fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool, show_size: b
                     let (size, _) = dir_size(path);
                     size
                 } else {
-                    // at this point, the metadata should be readable, so we can unwrap
-                    entry.metadata().unwrap().len()
+                    // at this point, the metadata should be readable, but just in case...
+                    entry.metadata().map_or(0, |m| m.len())
                 };
                 format!(" - {}", size_in_bytes_pretty_string(size))
             } else {
