@@ -129,6 +129,8 @@ pub fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool, show_siz
             let file_name = path.file_name()?.to_string_lossy();
             let entry_is_dir = entry.file_type().is_dir();
             let spacer = if entry_is_dir { " /" } else { " " };
+            //? consider only showing the size on a folder if it's at the depth limit
+            //? by adding "&& (depth_diff == depth || !entry_is_dir)"
             let size_str = if show_size {
                 let size = if entry_is_dir {
                     let (size, _) = dir_size(path);
