@@ -102,22 +102,31 @@ pub fn generate_tree_string(
     walkdir::WalkDir::new(root)
         .sort_by(move |a, b| {
             // sorts by directories first, then by specified sorting
-            if let Ok(secondary_ordering) = match sort_type {
-                SortType::Name => Ok(a.file_name().cmp(b.file_name())),
+            let secondary_ordering = match sort_type {
+                SortType::Name => Ok::<_, std::io::Error>(a.file_name().cmp(b.file_name())),
                 SortType::Size => a
                     .metadata()
                     .and_then(|a| b.metadata().map(|b| (a, b)))
-                    .map(|(a, b)| b.len().cmp(&a.len())),
+                    .map(|(a, b)| b.len().cmp(&a.len()))
+                    .map_err(Into::into),
 
-                SortType::Date => todo!(),
-            } {
-                b.path()
-                    .is_dir()
-                    .cmp(&a.path().is_dir())
-                    .then(secondary_ordering)
-            } else {
-                panic!("Error while sorting entries")
+                SortType::Date => a
+                    .metadata()
+                    .and_then(|a| b.metadata().map(|b| (a, b)))
+                    .map_err(Into::into)
+                    .and_then(|(a, b)| {
+                        a.modified()
+                            .and_then(|a| b.modified().map(|b| (a, b)))
+                            .map(|(a, b)| b.cmp(&a))
+                    }),
             }
+            .unwrap_or_else(|e| {
+                panic!("Error while sorting: {}", e);
+            });
+            b.path()
+                .is_dir()
+                .cmp(&a.path().is_dir())
+                .then(secondary_ordering)
         })
         .max_depth(depth)
         .into_iter()
@@ -164,6 +173,7 @@ pub fn generate_tree_string(
             } else {
                 String::new()
             };
+            // TODO: when sorting by date, display said date (use chrono)
             Some(format!("{indent}{branch}{spacer}{file_name}{size_str}"))
         })
         .join("\n")
