@@ -1,3 +1,4 @@
+use core::panic;
 use std::{
     iter::once,
     num::{IntErrorKind, ParseIntError},
@@ -11,7 +12,7 @@ use itertools::Itertools;
 use crate::{dir_size, size_in_bytes_pretty_string};
 
 /// Represents the sorting type for the tree.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, ValueEnum)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, ValueEnum)]
 pub enum SortType {
     Name,
     Size,
@@ -77,11 +78,19 @@ pub fn tree_depth_validator(s: &str) -> Result<usize, String> {
 ///
 /// * `root` - The directory to generate the tree of.
 /// * `depth` - The depth of the tree to generate.
+/// * `sort_type` - The sorting to use.
 /// * `no_hidden` - Whether to include hidden files in the tree.
+/// * `show_size` - Whether to show the size of files/folders in the tree.
 ///
 /// # Returns
 /// The tree as a string.
-pub fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool, show_size: bool) -> String {
+pub fn generate_tree_string(
+    root: &Path,
+    depth: usize,
+    sort_type: SortType,
+    no_hidden: bool,
+    show_size: bool,
+) -> String {
     const INDENT: &str = "│   ";
     const BRANCH: &str = "├───";
     const BRANCH_LAST: &str = "└───";
@@ -91,12 +100,24 @@ pub fn generate_tree_string(root: &Path, depth: usize, no_hidden: bool, show_siz
     // exactly once. this means that we can use the next entry to determine if the current
     // entry is the last entry in the directory and display the correct branch symbol.
     walkdir::WalkDir::new(root)
-        .sort_by(|a, b| {
-            // sorts by directories first, then by name
-            b.path()
-                .is_dir()
-                .cmp(&a.path().is_dir())
-                .then_with(|| a.file_name().cmp(b.file_name()))
+        .sort_by(move |a, b| {
+            // sorts by directories first, then by specified sorting
+            if let Ok(secondary_ordering) = match sort_type {
+                SortType::Name => Ok(a.file_name().cmp(b.file_name())),
+                SortType::Size => a
+                    .metadata()
+                    .and_then(|a| b.metadata().map(|b| (a, b)))
+                    .map(|(a, b)| b.len().cmp(&a.len())),
+
+                SortType::Date => todo!(),
+            } {
+                b.path()
+                    .is_dir()
+                    .cmp(&a.path().is_dir())
+                    .then(secondary_ordering)
+            } else {
+                panic!("Error while sorting entries")
+            }
         })
         .max_depth(depth)
         .into_iter()

@@ -101,6 +101,8 @@ fn size_in_bytes_pretty_string(size: u64) -> String {
 
 fn main() {
     let args = Args::parse();
+    #[cfg(debug_assertions)]
+    println!("{args:?}");
     // TODO: better error handling, this is just a quick and dirty solution
     if !args.dir.exists() {
         eprintln!("error: {} does not exist", args.dir.display());
@@ -119,8 +121,13 @@ fn main() {
     let file_count_str = file_count.to_formatted_string(&Locale::en);
     if let Some(tree_depth) = args.tree {
         let mut sp = spinners::Spinner::new(spinners::Spinners::Point, "Generating tree...".into());
-        let tree_string =
-            generate_tree_string(&canon_dir, tree_depth, args.no_hidden, args.size_in_tree);
+        let tree_string = generate_tree_string(
+            &canon_dir,
+            tree_depth,
+            args.sort,
+            args.no_hidden,
+            args.size_in_tree,
+        );
         sp.stop_with_message("Generated tree!".into());
         println!("{tree_string}");
     } else {
