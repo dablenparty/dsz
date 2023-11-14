@@ -27,8 +27,11 @@ struct Args {
     #[arg(short, long)]
     no_hidden: bool,
     /// Display the size of files/folders in the tree. WARNING: this may be slow. (ignored if --tree is not specified)
-    #[arg(short, long)]
+    #[arg(short = 'i', long)]
     size_in_tree: bool,
+    /// Sort the tree by the specified type. (ignored if --tree is not specified)
+    #[arg(short, long, default_value = "name")]
+    sort: SortType,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, ValueEnum)]
