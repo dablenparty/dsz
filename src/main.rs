@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use clap::{Parser, ValueHint};
+use clap::{Parser, ValueHint, ValueEnum};
 use itertools::Itertools;
 use num_format::{Locale, ToFormattedString};
 
@@ -29,6 +29,13 @@ struct Args {
     /// Display the size of files/folders in the tree. WARNING: this may be slow. (ignored if --tree is not specified)
     #[arg(short, long)]
     size_in_tree: bool,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, ValueEnum)]
+enum SortType {
+    Name,
+    Size,
+    Date,
 }
 
 /// Checks if a string can be parsed into a `usize` and is greater than 1, returning an error if it can't.
