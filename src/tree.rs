@@ -90,7 +90,7 @@ pub fn generate_tree_string(
     sort_type: SortType,
     no_hidden: bool,
     show_size: bool,
-) -> String {
+) -> anyhow::Result<String> {
     const INDENT: &str = "│   ";
     const BRANCH: &str = "├───";
     const BRANCH_LAST: &str = "└───";
@@ -102,27 +102,22 @@ pub fn generate_tree_string(
     walkdir::WalkDir::new(root)
         .sort_by(move |a, b| {
             // sorts by directories first, then by specified sorting
+            // everything can be unwrapped because it should already be readable
+            // by the time it gets here
             let secondary_ordering = match sort_type {
-                SortType::Name => Ok::<_, std::io::Error>(a.file_name().cmp(b.file_name())),
-                SortType::Size => a
+                SortType::Name => a.file_name().cmp(b.file_name()),
+                SortType::Size => b
                     .metadata()
-                    .and_then(|a| b.metadata().map(|b| (a, b)))
-                    .map(|(a, b)| b.len().cmp(&a.len()))
-                    .map_err(Into::into),
+                    .unwrap()
+                    .len()
+                    .cmp(&a.metadata().unwrap().len()),
 
-                SortType::Date => a
-                    .metadata()
-                    .and_then(|a| b.metadata().map(|b| (a, b)))
-                    .map_err(Into::into)
-                    .and_then(|(a, b)| {
-                        a.modified()
-                            .and_then(|a| b.modified().map(|b| (a, b)))
-                            .map(|(a, b)| b.cmp(&a))
+                SortType::Date => b.metadata().unwrap().modified().unwrap().cmp(
+                    &a.metadata().unwrap().modified().unwrap_or_else(|_| {
+                        panic!("Error while reading file {}", a.path().display())
                     }),
-            }
-            .unwrap_or_else(|e| {
-                panic!("Error while sorting: {}", e);
-            });
+                ),
+            };
             b.path()
                 .is_dir()
                 .cmp(&a.path().is_dir())
@@ -135,14 +130,14 @@ pub fn generate_tree_string(
         .map(Some)
         .chain(once(None))
         .tuple_windows::<(_, _)>()
-        .filter_map(|(entry, next_entry)| {
+        .filter_map::<anyhow::Result<_, _>, _>(|(entry, next_entry)| {
             let entry = entry?;
             let path = entry.path();
             let path_components_count = path.components().count();
             let depth_diff = path_components_count - root.components().count();
             // the root! show the root!
             if depth_diff == 0 {
-                return Some(path.display().to_string());
+                return Some(Ok(path.display().to_string()));
             }
             let (indent, branch) = match next_entry {
                 Some(next_entry) => {
@@ -163,7 +158,10 @@ pub fn generate_tree_string(
             //? by adding "&& (depth_diff == depth || !entry_is_dir)"
             let size_str = if show_size {
                 let size = if entry_is_dir {
-                    let (size, _) = dir_size(path);
+                    let (size, _) = match dir_size(path) {
+                        Ok(s) => s,
+                        Err(e) => return Some(Err(e)),
+                    };
                     size
                 } else {
                     // at this point, the metadata should be readable, but just in case...
@@ -174,7 +172,8 @@ pub fn generate_tree_string(
                 String::new()
             };
             // TODO: when sorting by date, display said date (use chrono)
-            Some(format!("{indent}{branch}{spacer}{file_name}{size_str}"))
+            Some(Ok(format!("{indent}{branch}{spacer}{file_name}{size_str}")))
         })
-        .join("\n")
+        .collect::<anyhow::Result<Vec<_>>>()
+        .map(|v| v.join("\n"))
 }

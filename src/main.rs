@@ -5,6 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use anyhow::Context;
 use clap::{Parser, ValueHint};
 use num_format::{Locale, ToFormattedString};
 use tree::{tree_depth_validator, SortType};
@@ -46,7 +47,7 @@ struct Args {
 /// # Returns
 ///
 /// A tuple containing the size (in bytes) and the number of files.
-fn dir_size(dir: &Path) -> (u64, u64) {
+fn dir_size(dir: &Path) -> anyhow::Result<(u64, u64)> {
     // rayon could parallelize this, but it needs par_bridge() and ends up being slower
     // than just doing it sequentially
     let file_sizes: Vec<u64> = walkdir::WalkDir::new(dir)
@@ -54,18 +55,15 @@ fn dir_size(dir: &Path) -> (u64, u64) {
         .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_file())
         .map(|entry| {
-            entry.metadata().map_or_else(
-                |e| {
-                    eprintln!("Error while reading file {}: {e}", entry.path().display());
-                    0
-                },
-                |f| f.len(),
-            )
+            entry
+                .metadata()
+                .map(|f| f.len())
+                .with_context(|| format!("Error while reading file {}", entry.path().display()))
         })
-        .collect();
+        .collect::<Result<_, _>>()?;
     // parallelizing this part makes very little difference
     let size = file_sizes.iter().sum();
-    (size, file_sizes.len() as u64)
+    Ok((size, file_sizes.len() as u64))
 }
 
 /// Makes a string from a size in bytes (up to TB), rounding to the nearest 2 decimal places.
@@ -99,23 +97,22 @@ fn size_in_bytes_pretty_string(size: u64) -> String {
     }
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     #[cfg(debug_assertions)]
     println!("{args:?}");
     // TODO: better error handling, this is just a quick and dirty solution
-    if !args.dir.exists() {
-        eprintln!("error: {} does not exist", args.dir.display());
-        std::process::exit(1);
-    } else if !args.dir.is_dir() {
-        eprintln!("error: {} is not a directory", args.dir.display());
-        std::process::exit(1);
+    if !args.dir.is_dir() {
+        return Err(anyhow::anyhow!(
+            "error: {} is not a directory",
+            args.dir.display()
+        ));
     }
     let canon_dir =
-        dunce::canonicalize(args.dir).expect("A fatal error occurred while reading the directory");
+        dunce::canonicalize(args.dir).context("A fatal error occurred resolving directory path")?;
     // TODO: symbols
     let mut sp = spinners::Spinner::new(spinners::Spinners::Point, "Calculating size...".into());
-    let (size, file_count) = dir_size(&canon_dir);
+    let (size, file_count) = dir_size(&canon_dir)?;
     sp.stop_with_message("Calculated size!".into());
     let size_str = size_in_bytes_pretty_string(size);
     let file_count_str = file_count.to_formatted_string(&Locale::en);
@@ -127,7 +124,8 @@ fn main() {
             args.sort,
             args.no_hidden,
             args.size_in_tree,
-        );
+        )
+        .context("Failed to generate tree")?;
         sp.stop_with_message("Generated tree!".into());
         println!("{tree_string}");
     } else {
@@ -135,4 +133,5 @@ fn main() {
     }
     println!("{file_count_str} files evaluated");
     println!("{size_str}");
+    Ok(())
 }
