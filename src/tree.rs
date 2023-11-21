@@ -89,6 +89,21 @@ pub fn tree_depth_validator(s: &str) -> Result<usize, String> {
         })
 }
 
+#[cfg(windows)]
+fn file_is_hidden(path: &Path) -> std::io::Result<bool> {
+    let metadata = path.metadata()?;
+    let attributes = metadata.file_attributes();
+
+    Ok(attributes & 0x2 > 0)
+}
+
+#[cfg(any(unix, not(windows)))]
+fn file_is_hidden(path: &Path) -> std::io::Result<bool> {
+    path.file_name()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "No file name"))
+        .map(|s| s.to_str().is_some_and(|s| !s.starts_with('.')))
+}
+
 /// Generates a tree of the directory, up to the specified depth. This function is not parallelized.
 ///
 /// # Arguments
@@ -137,7 +152,7 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         })
         .max_depth(depth)
         .into_iter()
-        .filter_entry(|e| !no_hidden || e.file_name().to_str().is_some_and(|s| !s.starts_with('.')))
+        .filter_entry(|e| !no_hidden || file_is_hidden(e.path()).unwrap_or(false))
         .filter_map(std::result::Result::ok)
         .map(Some)
         .chain(once(None))
