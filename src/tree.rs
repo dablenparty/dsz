@@ -132,6 +132,9 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         show_size,
     } = args;
 
+    // TODO: restructure for readability
+    //? consider using chained map/filter calls instead of one giant filter_map call
+
     // these long and funky iterators are used to make a sliding window of the entries in
     // the walker that guarantees every entry will appear in the left side of the window
     // exactly once. this means that we can use the next entry to determine if the current
@@ -165,6 +168,7 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
             let entry_path = entry.path();
             let path_components_count = entry_path.components().count();
             let depth_diff = path_components_count - root.components().count();
+            // TODO: skip over root in the iterator instead of checking every time (use iter::once)
             // the root! show the root!
             if depth_diff == 0 {
                 return Some(entry_path.display().to_string());
