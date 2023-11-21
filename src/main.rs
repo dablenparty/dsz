@@ -3,9 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
-use clap::{Parser, ValueHint};
+use clap::{Parser, Subcommand, ValueHint};
 use num_format::{Locale, ToFormattedString};
-use tree::{tree_depth_validator, SortType};
 
 use crate::tree::generate_tree_string;
 
@@ -16,23 +15,19 @@ mod tree;
 /// given you're on a terminal that supports unicode.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
+#[command(propagate_version = true)]
 struct Args {
     /// The directory to calculate the size of.
     #[arg(default_value = ".", value_hint = ValueHint::DirPath)]
     dir: PathBuf,
-    // TODO: make `tree` a subcommand
-    /// Display the directory tree, up to <TREE> depth. [default: 1]
-    #[arg(short, long, value_hint = ValueHint::Other, value_parser = tree_depth_validator, num_args = 0..=1, require_equals = true, default_missing_value = "1")]
-    tree: Option<usize>,
-    /// Exclude hidden files from the tree. (ignored if --tree is not specified)
-    #[arg(short, long)]
-    no_hidden: bool,
-    /// Display the size of files/folders in the tree. WARNING: this may be slow. (ignored if --tree is not specified)
-    #[arg(short = 'i', long)]
-    size_in_tree: bool,
-    /// Sort the tree by the specified type. (ignored if --tree is not specified)
-    #[arg(short, long, default_value = "name")]
-    sort: SortType,
+    /// An optional subcommand.
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    Tree(tree::TreeArgs),
 }
 
 /// Computes the size of a directory, returning the size in bytes and the number of files.
@@ -111,17 +106,16 @@ fn main() -> anyhow::Result<()> {
     sp.stop_with_message("Calculated size!".into());
     let size_str = size_in_bytes_pretty_string(size);
     let file_count_str = file_count.to_formatted_string(&Locale::en);
-    if let Some(tree_depth) = args.tree {
-        let mut sp = spinners::Spinner::new(spinners::Spinners::Point, "Generating tree...".into());
-        let tree_string = generate_tree_string(
-            &canon_dir,
-            tree_depth,
-            args.sort,
-            args.no_hidden,
-            args.size_in_tree,
-        );
-        sp.stop_with_message("Generated tree!".into());
-        println!("{tree_string}");
+    if let Some(cmd) = args.command {
+        match cmd {
+            Commands::Tree(args) => {
+                let mut sp =
+                    spinners::Spinner::new(spinners::Spinners::Point, "Generating tree...".into());
+                let tree_string = generate_tree_string(&canon_dir, args);
+                sp.stop_with_message("Generated tree!".into());
+                println!("{tree_string}");
+            }
+        }
     } else {
         println!("{}", canon_dir.display());
     }

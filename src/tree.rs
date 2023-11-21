@@ -5,10 +5,28 @@ use std::{
     path::Path,
 };
 
-use clap::ValueEnum;
+use clap::{Args, ValueEnum};
 use itertools::Itertools;
 
 use crate::{dir_size, size_in_bytes_pretty_string};
+
+/// Displays a visual tree of the directory, up to the specified depth. WARNING: this may be slow
+#[derive(Args, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[allow(clippy::module_name_repetitions)]
+pub struct TreeArgs {
+    #[arg(short, long, value_hint = clap::ValueHint::Other, value_parser = tree_depth_validator, num_args = 0..=1, require_equals = true, default_value = "1")]
+    /// The depth of the tree to generate
+    depth: usize,
+    /// Exclude hidden (dot) files from the tree.
+    #[arg(short, long)]
+    no_hidden: bool,
+    /// Display the size of files/folders in the tree.
+    #[arg(short = 'i', long)]
+    show_size: bool,
+    /// Sort the tree.
+    #[arg(short, long = "sort", value_hint = clap::ValueHint::Other, default_value = "name")]
+    sort_type: SortType,
+}
 
 /// Represents the sorting type for the tree.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, ValueEnum)]
@@ -83,16 +101,18 @@ pub fn tree_depth_validator(s: &str) -> Result<usize, String> {
 ///
 /// # Returns
 /// The tree as a string.
-pub fn generate_tree_string(
-    root: &Path,
-    depth: usize,
-    sort_type: SortType,
-    no_hidden: bool,
-    show_size: bool,
-) -> String {
+pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
     const INDENT: &str = "│   ";
     const BRANCH: &str = "├───";
     const BRANCH_LAST: &str = "└───";
+
+    // copy args out
+    let TreeArgs {
+        depth,
+        sort_type,
+        no_hidden,
+        show_size,
+    } = args;
 
     // these long and funky iterators are used to make a sliding window of the entries in
     // the walker that guarantees every entry will appear in the left side of the window
