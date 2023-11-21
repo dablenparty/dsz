@@ -150,9 +150,8 @@ pub fn generate_tree_string(
             let file_name = entry_path
                 .file_name()
                 .map_or(String::from("???"), |s| s.to_string_lossy().to_string());
-            //? consider only showing the size on a folder if it's at the depth limit
-            //? by adding "&& (depth_diff == depth || !entry_is_dir)"
-            let size_str = if show_size {
+            // only shows size if it's a file or it's a directory that isn't being expanded
+            let size_str = if show_size && (depth_diff == depth || !entry_is_dir) {
                 let size = if entry_is_dir {
                     dir_size(entry_path).map(|(size, _)| size)
                 } else {
