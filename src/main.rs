@@ -1,9 +1,6 @@
 #![warn(clippy::all, clippy::pedantic)]
 
-use std::{
-    ops::Mul,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use clap::{Parser, ValueHint};
@@ -23,6 +20,7 @@ struct Args {
     /// The directory to calculate the size of.
     #[arg(default_value = ".", value_hint = ValueHint::DirPath)]
     dir: PathBuf,
+    // TODO: make `tree` a subcommand
     /// Display the directory tree, up to <TREE> depth. [default: 1]
     #[arg(short, long, value_hint = ValueHint::Other, value_parser = tree_depth_validator, num_args = 0..=1, require_equals = true, default_missing_value = "1")]
     tree: Option<usize>,
@@ -88,9 +86,7 @@ fn size_in_bytes_pretty_string(size: u64) -> String {
         i += 1;
     }
     let size_abbrv = SIZES[i];
-    // checks if the first two digits after the decimal point round to 0
-    let first_two_fract = size.fract().mul(100.0).round();
-    if first_two_fract == 0.0 {
+    if i == 0 {
         format!("{size} {size_abbrv}")
     } else {
         format!("{size:.2} {size_abbrv}")
@@ -124,8 +120,7 @@ fn main() -> anyhow::Result<()> {
             args.sort,
             args.no_hidden,
             args.size_in_tree,
-        )
-        .context("Failed to generate tree")?;
+        );
         sp.stop_with_message("Generated tree!".into());
         println!("{tree_string}");
     } else {

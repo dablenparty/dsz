@@ -1,4 +1,3 @@
-use core::panic;
 use std::{
     iter::once,
     num::{IntErrorKind, ParseIntError},
@@ -90,7 +89,7 @@ pub fn generate_tree_string(
     sort_type: SortType,
     no_hidden: bool,
     show_size: bool,
-) -> anyhow::Result<String> {
+) -> String {
     const INDENT: &str = "│   ";
     const BRANCH: &str = "├───";
     const BRANCH_LAST: &str = "└───";
@@ -102,22 +101,15 @@ pub fn generate_tree_string(
     walkdir::WalkDir::new(root)
         .sort_by(move |a, b| {
             // sorts by directories first, then by specified sorting
-            // everything can be unwrapped because it should already be readable
-            // by the time it gets here
+            // if an error happens while sorting, it gets sent to the bottom
             let secondary_ordering = match sort_type {
-                SortType::Name => a.file_name().cmp(b.file_name()),
-                SortType::Size => b
-                    .metadata()
-                    .unwrap()
-                    .len()
-                    .cmp(&a.metadata().unwrap().len()),
-
-                SortType::Date => b.metadata().unwrap().modified().unwrap().cmp(
-                    &a.metadata().unwrap().modified().unwrap_or_else(|_| {
-                        panic!("Error while reading file {}", a.path().display())
-                    }),
-                ),
-            };
+                SortType::Name => Ok::<_, std::io::Error>(a.file_name().cmp(b.file_name())),
+                SortType::Size => (|| Ok(b.metadata()?.len().cmp(&a.metadata()?.len())))(),
+                SortType::Date => {
+                    (|| Ok(b.metadata()?.modified()?.cmp(&a.metadata()?.modified()?)))()
+                }
+            }
+            .unwrap_or(std::cmp::Ordering::Less);
             b.path()
                 .is_dir()
                 .cmp(&a.path().is_dir())
@@ -130,14 +122,14 @@ pub fn generate_tree_string(
         .map(Some)
         .chain(once(None))
         .tuple_windows::<(_, _)>()
-        .filter_map::<anyhow::Result<_, _>, _>(|(entry, next_entry)| {
+        .filter_map(|(entry, next_entry)| {
             let entry = entry?;
-            let path = entry.path();
-            let path_components_count = path.components().count();
+            let entry_path = entry.path();
+            let path_components_count = entry_path.components().count();
             let depth_diff = path_components_count - root.components().count();
             // the root! show the root!
             if depth_diff == 0 {
-                return Some(Ok(path.display().to_string()));
+                return Some(entry_path.display().to_string());
             }
             let (indent, branch) = match next_entry {
                 Some(next_entry) => {
@@ -150,30 +142,32 @@ pub fn generate_tree_string(
                 }
                 None => (BRANCH_LAST.repeat(depth_diff - 1), BRANCH_LAST),
             };
-            // everything should be canonicalized at this point BUT just in case...
-            let file_name = path.file_name()?.to_string_lossy();
             let entry_is_dir = entry.file_type().is_dir();
-            let spacer = if entry_is_dir { " /" } else { " " };
+            let meta = entry.metadata();
+            let dir_slash = if entry_is_dir { "/" } else { "" };
+            let spacer = if meta.is_ok() { " " } else { "!!" };
+            // everything should be canonicalized at this point BUT just in case...
+            let file_name = entry_path
+                .file_name()
+                .map_or(String::from("???"), |s| s.to_string_lossy().to_string());
             //? consider only showing the size on a folder if it's at the depth limit
             //? by adding "&& (depth_diff == depth || !entry_is_dir)"
             let size_str = if show_size {
                 let size = if entry_is_dir {
-                    let (size, _) = match dir_size(path) {
-                        Ok(s) => s,
-                        Err(e) => return Some(Err(e)),
-                    };
-                    size
+                    dir_size(entry_path).map(|(size, _)| size)
                 } else {
-                    // at this point, the metadata should be readable, but just in case...
-                    entry.metadata().map_or(0, |m| m.len())
-                };
-                format!(" - {}", size_in_bytes_pretty_string(size))
+                    meta.map(|m| m.len()).map_err(Into::into)
+                }
+                .ok()
+                .map_or_else(|| String::from("???"), size_in_bytes_pretty_string);
+                format!(" - {size}")
             } else {
                 String::new()
             };
             // TODO: when sorting by date, display said date (use chrono)
-            Some(Ok(format!("{indent}{branch}{spacer}{file_name}{size_str}")))
+            Some(format!(
+                "{indent}{branch}{spacer}{dir_slash}{file_name}{size_str}"
+            ))
         })
-        .collect::<anyhow::Result<Vec<_>>>()
-        .map(|v| v.join("\n"))
+        .join("\n")
 }
