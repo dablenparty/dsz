@@ -6,8 +6,6 @@ use anyhow::Context;
 use clap::{Parser, Subcommand, ValueHint};
 use num_format::{Locale, ToFormattedString};
 
-use crate::tree::generate_tree_string;
-
 mod tree;
 
 /// dsz, short for directory size, does as its name suggests: it calculates the size of a directory by
@@ -111,7 +109,7 @@ fn main() -> anyhow::Result<()> {
             Commands::Tree(args) => {
                 let mut sp =
                     spinners::Spinner::new(spinners::Spinners::Point, "Generating tree...".into());
-                let tree_string = generate_tree_string(&canon_dir, args);
+                let tree_string = tree::generate_tree_string(&canon_dir, args);
                 sp.stop_with_message("Generated tree!".into());
                 println!("{tree_string}");
             }

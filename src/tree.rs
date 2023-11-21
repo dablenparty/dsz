@@ -1,4 +1,5 @@
 use std::{
+    io,
     iter::once,
     num::{IntErrorKind, ParseIntError},
     ops::RangeInclusive,
@@ -90,7 +91,9 @@ pub fn tree_depth_validator(s: &str) -> Result<usize, String> {
 }
 
 #[cfg(windows)]
-fn file_is_hidden(path: &Path) -> std::io::Result<bool> {
+fn file_is_hidden(path: &Path) -> io::Result<bool> {
+    // adapted from: https://users.rust-lang.org/t/read-windows-hidden-file-attribute/51180/7
+    use std::os::windows::fs::MetadataExt;
     let metadata = path.metadata()?;
     let attributes = metadata.file_attributes();
 
@@ -98,10 +101,10 @@ fn file_is_hidden(path: &Path) -> std::io::Result<bool> {
 }
 
 #[cfg(any(unix, not(windows)))]
-fn file_is_hidden(path: &Path) -> std::io::Result<bool> {
+fn file_is_hidden(path: &Path) -> io::Result<bool> {
     path.file_name()
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "No file name"))
-        .map(|s| s.to_str().is_some_and(|s| !s.starts_with('.')))
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No file name"))
+        .map(|s| s.to_str().is_some_and(|s| s.starts_with('.')))
 }
 
 /// Generates a tree of the directory, up to the specified depth. This function is not parallelized.
@@ -138,7 +141,7 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
             // sorts by directories first, then by specified sorting
             // if an error happens while sorting, it gets sent to the bottom
             let secondary_ordering = match sort_type {
-                SortType::Name => Ok::<_, std::io::Error>(a.file_name().cmp(b.file_name())),
+                SortType::Name => Ok::<_, io::Error>(a.file_name().cmp(b.file_name())),
                 SortType::Size => (|| Ok(b.metadata()?.len().cmp(&a.metadata()?.len())))(),
                 SortType::Date => {
                     (|| Ok(b.metadata()?.modified()?.cmp(&a.metadata()?.modified()?)))()
@@ -152,7 +155,7 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         })
         .max_depth(depth)
         .into_iter()
-        .filter_entry(|e| !no_hidden || file_is_hidden(e.path()).unwrap_or(false))
+        .filter_entry(|e| !no_hidden || !file_is_hidden(e.path()).unwrap_or(false))
         .filter_map(std::result::Result::ok)
         .map(Some)
         .chain(once(None))
