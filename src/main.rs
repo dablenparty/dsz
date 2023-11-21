@@ -97,7 +97,6 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     #[cfg(debug_assertions)]
     println!("{args:?}");
-    // TODO: better error handling, this is just a quick and dirty solution
     if !args.dir.is_dir() {
         return Err(anyhow::anyhow!(
             "error: {} is not a directory",
