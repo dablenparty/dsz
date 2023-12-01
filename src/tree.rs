@@ -139,7 +139,7 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
     // the walker that guarantees every entry will appear in the left side of the window
     // exactly once. this means that we can use the next entry to determine if the current
     // entry is the last entry in the directory and display the correct branch symbol.
-    walkdir::WalkDir::new(root)
+    let tree_iter = walkdir::WalkDir::new(root)
         .sort_by(move |a, b| {
             // sorts by directories first, then by specified sorting
             // if an error happens while sorting, it gets sent to the bottom
@@ -159,6 +159,7 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         .max_depth(depth)
         .into_iter()
         .filter_entry(|e| !no_hidden || !file_is_hidden(e.path()).unwrap_or(false))
+        .skip(1)
         .filter_map(std::result::Result::ok)
         .map(Some)
         .chain(once(None))
@@ -168,19 +169,15 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
             let entry_path = entry.path();
             let path_components_count = entry_path.components().count();
             let depth_diff = path_components_count - root.components().count();
-            // TODO: skip over root in the iterator instead of checking every time (use iter::once)
-            // the root! show the root!
-            if depth_diff == 0 {
-                return Some(entry_path.display().to_string());
-            }
             let (indent, branch) = match next_entry {
                 Some(next_entry) => {
                     let indent = INDENT.repeat(depth_diff - 1);
-                    if next_entry.path().components().count() < path_components_count {
-                        (indent, BRANCH_LAST)
+                    let branch = if next_entry.path().components().count() < path_components_count {
+                        BRANCH_LAST
                     } else {
-                        (indent, BRANCH)
-                    }
+                        BRANCH
+                    };
+                    (indent, branch)
                 }
                 None => (BRANCH_LAST.repeat(depth_diff - 1), BRANCH_LAST),
             };
@@ -191,7 +188,8 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
             // everything should be canonicalized at this point BUT just in case...
             let file_name = entry_path
                 .file_name()
-                .map_or(String::from("???"), |s| s.to_string_lossy().to_string());
+                .and_then(|s| s.to_str())
+                .unwrap_or("???");
             // only shows size if it's a file or it's a directory that isn't being expanded
             let size_str = if show_size && (depth_diff == depth || !entry_is_dir) {
                 let size = if entry_is_dir {
@@ -209,6 +207,6 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
             Some(format!(
                 "{indent}{branch}{spacer}{dir_slash}{file_name}{size_str}"
             ))
-        })
-        .join("\n")
+        });
+    once(root.display().to_string()).chain(tree_iter).join("\n")
 }
