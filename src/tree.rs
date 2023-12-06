@@ -132,9 +132,6 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         show_size,
     } = args;
 
-    // TODO: restructure for readability
-    //? consider using chained map/filter calls instead of one giant filter_map call
-
     // these long and funky iterators are used to make a sliding window of the entries in
     // the walker that guarantees every entry will appear in the left side of the window
     // exactly once. this means that we can use the next entry to determine if the current
@@ -143,6 +140,7 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         .sort_by(move |a, b| {
             // sorts by directories first, then by specified sorting
             // if an error happens while sorting, it gets sent to the bottom
+            // I used closures to allow using "?"
             let secondary_ordering = match sort_type {
                 SortType::Name => Ok::<_, io::Error>(a.file_name().cmp(b.file_name())),
                 SortType::Size => (|| Ok(b.metadata()?.len().cmp(&a.metadata()?.len())))(),
@@ -164,8 +162,8 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         .map(Some)
         .chain(once(None))
         .tuple_windows::<(_, _)>()
-        .filter_map(|(entry, next_entry)| {
-            let entry = entry?;
+        .filter_map(|(e, ne)| e.map(|e| (e, ne)))
+        .map(|(entry, next_entry)| {
             let entry_path = entry.path();
             let path_components_count = entry_path.components().count();
             let depth_diff = path_components_count - root.components().count();
@@ -204,9 +202,7 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
                 String::new()
             };
             // TODO: when sorting by date, display said date (use chrono)
-            Some(format!(
-                "{indent}{branch}{spacer}{dir_slash}{file_name}{size_str}"
-            ))
+            format!("{indent}{branch}{spacer}{dir_slash}{file_name}{size_str}")
         });
     once(root.display().to_string()).chain(tree_iter).join("\n")
 }
