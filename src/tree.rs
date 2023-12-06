@@ -18,13 +18,13 @@ pub struct TreeArgs {
     #[arg(short, long, value_hint = clap::ValueHint::Other, value_parser = tree_depth_validator, num_args = 0..=1, require_equals = true, default_value = "1")]
     /// The depth of the tree to generate
     depth: usize,
-    /// Exclude hidden (dot) files from the tree.
+    /// Exclude hidden files from the tree.
     #[arg(short, long)]
     no_hidden: bool,
-    /// Display the size of files/folders in the tree.
+    /// Show file size in the tree.
     #[arg(short = 'i', long)]
     show_size: bool,
-    /// Sort the tree.
+    /// Sort the tree by name, file size, or file date.
     #[arg(short, long = "sort", value_hint = clap::ValueHint::Other, default_value = "name")]
     sort_type: SortType,
 }
@@ -34,7 +34,10 @@ pub struct TreeArgs {
 pub enum SortType {
     Name,
     Size,
-    Date,
+    #[value(name = "modified")]
+    ModifiedDate,
+    #[value(name = "created")]
+    CreatedDate,
 }
 
 impl Default for SortType {
@@ -144,8 +147,11 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
             let secondary_ordering = match sort_type {
                 SortType::Name => Ok::<_, io::Error>(a.file_name().cmp(b.file_name())),
                 SortType::Size => (|| Ok(b.metadata()?.len().cmp(&a.metadata()?.len())))(),
-                SortType::Date => {
+                SortType::ModifiedDate => {
                     (|| Ok(b.metadata()?.modified()?.cmp(&a.metadata()?.modified()?)))()
+                }
+                SortType::CreatedDate => {
+                    (|| Ok(b.metadata()?.created()?.cmp(&a.metadata()?.created()?)))()
                 }
             }
             .unwrap_or(std::cmp::Ordering::Less);
