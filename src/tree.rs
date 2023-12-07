@@ -6,6 +6,7 @@ use std::{
     path::Path,
 };
 
+use chrono::{DateTime, Local};
 use clap::{Args, ValueEnum};
 use itertools::Itertools;
 
@@ -170,6 +171,7 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         .tuple_windows::<(_, _)>()
         .filter_map(|(e, ne)| e.map(|e| (e, ne)))
         .map(|(entry, next_entry)| {
+            // TODO: use a vec as a StringBuilder instead of a huge format string
             let entry_path = entry.path();
             let path_components_count = entry_path.components().count();
             let depth_diff = path_components_count - root.components().count();
@@ -186,9 +188,9 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
                 None => (BRANCH_LAST.repeat(depth_diff - 1), BRANCH_LAST),
             };
             let entry_is_dir = entry.file_type().is_dir();
-            let meta = entry.metadata();
+            let meta = entry.metadata().ok(); // I don't care about the error, only if the metadata exists
             let dir_slash = if entry_is_dir { "/" } else { "" };
-            let spacer = if meta.is_ok() { " " } else { "!!" };
+            let spacer = if meta.is_some() { " " } else { "!!" };
             // everything should be canonicalized at this point BUT just in case...
             let file_name = entry_path
                 .file_name()
@@ -197,18 +199,31 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
             // only shows size if it's a file or it's a directory that isn't being expanded
             let size_str = if show_size && (depth_diff == depth || !entry_is_dir) {
                 let size = if entry_is_dir {
-                    dir_size(entry_path).map(|(size, _)| size)
+                    dir_size(entry_path).map(|(size, _)| size).ok()
                 } else {
-                    meta.map(|m| m.len()).map_err(Into::into)
+                    meta.as_ref().map(std::fs::Metadata::len)
                 }
-                .ok()
                 .map_or_else(|| String::from("???"), size_in_bytes_pretty_string);
                 format!(" - {size}")
             } else {
                 String::new()
             };
-            // TODO: when sorting by date, display said date (use chrono)
-            format!("{indent}{branch}{spacer}{dir_slash}{file_name}{size_str}")
+            // TODO: simplify this and the one above (check earlier TODO about StringBuilder)
+            let date_str = if depth_diff == depth || !entry_is_dir {
+                match sort_type {
+                    SortType::ModifiedDate => meta.and_then(|m| m.modified().ok()),
+                    SortType::CreatedDate => meta.and_then(|m| m.created().ok()),
+                    _ => None,
+                }
+                .map(DateTime::<Local>::from)
+                .map_or_else(
+                    || String::from("???"),
+                    |d| format!(" ({})", d.format("%Y-%m-%d %H:%M:%S")),
+                )
+            } else {
+                String::default()
+            };
+            format!("{indent}{branch}{spacer}{dir_slash}{file_name}{size_str}{date_str}")
         });
     once(root.display().to_string()).chain(tree_iter).join("\n")
 }
