@@ -175,6 +175,15 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
             let entry_path = entry.path();
             let path_components_count = entry_path.components().count();
             let depth_diff = path_components_count - root.components().count();
+            // everything should be canonicalized at this point BUT just in case...
+            let file_name = entry_path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("???");
+            // INDENT size + BRANCH len + file_name len +? size_str len +? date_str len
+            let mut string_builder = String::with_capacity(
+                depth_diff * INDENT.len() + BRANCH.len() + file_name.len() + 10 + 30,
+            );
             let (indent, branch) = match next_entry {
                 Some(next_entry) => {
                     let indent = INDENT.repeat(depth_diff - 1);
@@ -187,43 +196,41 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
                 }
                 None => (BRANCH_LAST.repeat(depth_diff - 1), BRANCH_LAST),
             };
+            string_builder.push_str(&indent);
+            string_builder.push_str(branch);
             let entry_is_dir = entry.file_type().is_dir();
             let meta = entry.metadata().ok(); // I don't care about the error, only if the metadata exists
-            let dir_slash = if entry_is_dir { "/" } else { "" };
-            let spacer = if meta.is_some() { " " } else { "!!" };
-            // everything should be canonicalized at this point BUT just in case...
-            let file_name = entry_path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("???");
+            let spacer = if meta.is_some() { ' ' } else { '!' };
+            string_builder.push(spacer);
+            if entry_is_dir {
+                string_builder.push('/');
+            };
+            string_builder.push_str(file_name);
             // only shows size if it's a file or it's a directory that isn't being expanded
-            let size_str = if show_size && (depth_diff == depth || !entry_is_dir) {
-                let size = if entry_is_dir {
-                    dir_size(entry_path).map(|(size, _)| size).ok()
-                } else {
-                    meta.as_ref().map(std::fs::Metadata::len)
+            if depth_diff == depth || !entry_is_dir {
+                if show_size {
+                    let size_str = if entry_is_dir {
+                        dir_size(entry_path).map(|(size, _)| size).ok()
+                    } else {
+                        meta.as_ref().map(std::fs::Metadata::len)
+                    }
+                    .map_or_else(|| String::from("???"), size_in_bytes_pretty_string);
+                    string_builder.push_str(&format!(" - {size_str}"));
                 }
-                .map_or_else(|| String::from("???"), size_in_bytes_pretty_string);
-                format!(" - {size}")
-            } else {
-                String::new()
-            };
-            // TODO: simplify this and the one above (check earlier TODO about StringBuilder)
-            let date_str = if depth_diff == depth || !entry_is_dir {
-                match sort_type {
-                    SortType::ModifiedDate => meta.and_then(|m| m.modified().ok()),
-                    SortType::CreatedDate => meta.and_then(|m| m.created().ok()),
+                let maybe_file_time = match sort_type {
+                    SortType::ModifiedDate => meta.map(|m| m.modified().ok()),
+                    SortType::CreatedDate => meta.map(|m| m.created().ok()),
                     _ => None,
+                };
+                if let Some(file_time) = maybe_file_time {
+                    let date_str = file_time.map(DateTime::<Local>::from).map_or_else(
+                        || String::from(" (???)"),
+                        |d| format!(" ({})", d.format("%Y-%m-%d %H:%M:%S")),
+                    );
+                    string_builder.push_str(&date_str);
                 }
-                .map(DateTime::<Local>::from)
-                .map_or_else(
-                    || String::from("???"),
-                    |d| format!(" ({})", d.format("%Y-%m-%d %H:%M:%S")),
-                )
-            } else {
-                String::default()
             };
-            format!("{indent}{branch}{spacer}{dir_slash}{file_name}{size_str}{date_str}")
+            string_builder
         });
     once(root.display().to_string()).chain(tree_iter).join("\n")
 }
