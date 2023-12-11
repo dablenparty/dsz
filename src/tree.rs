@@ -171,14 +171,13 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         .tuple_windows::<(_, _)>()
         .filter_map(|(e, ne)| e.map(|e| (e, ne)))
         .map(|(entry, next_entry)| {
-            // TODO: use a vec as a StringBuilder instead of a huge format string
             let entry_path = entry.path();
             let path_components_count = entry_path.components().count();
             let depth_diff = path_components_count - root.components().count();
             // everything should be canonicalized at this point BUT just in case...
             let file_name = entry_path
                 .file_name()
-                .and_then(|s| s.to_str())
+                .and_then(std::ffi::OsStr::to_str)
                 .unwrap_or("???");
             // INDENT size + BRANCH len + file_name len +? size_str len +? date_str len
             let mut string_builder = String::with_capacity(
