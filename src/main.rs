@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use clap::{Parser, Subcommand, ValueHint};
+use itertools::Itertools;
 use num_format::{Locale, ToFormattedString};
 
 mod tree;
@@ -18,6 +19,9 @@ struct Args {
     /// The directory to calculate the size of.
     #[arg(default_value = ".", value_hint = ValueHint::DirPath)]
     dir: PathBuf,
+    /// Show the size of the directory in bytes.
+    #[arg(short = 'b', long)]
+    show_bytes: bool,
     /// An optional subcommand.
     #[command(subcommand)]
     command: Option<Commands>,
@@ -43,15 +47,13 @@ fn dir_size(dir: &Path) -> anyhow::Result<(u64, u64)> {
     // than just doing it sequentially
     let file_sizes: Vec<u64> = walkdir::WalkDir::new(dir)
         .into_iter()
-        .filter_map(std::result::Result::ok)
-        .filter(|e| e.file_type().is_file())
-        .map(|entry| {
+        .map_ok(|entry| {
             entry
                 .metadata()
                 .map(|f| f.len())
-                .with_context(|| format!("Error while reading file {}", entry.path().display()))
+                .with_context(|| format!("Error while reading entry {}", entry.path().display()))
         })
-        .collect::<Result<_, _>>()?;
+        .collect::<Result<Result<_, _>, _>>()??;
     // parallelizing this part makes very little difference
     let size = file_sizes.iter().sum();
     Ok((size, file_sizes.len() as u64))
@@ -119,5 +121,8 @@ fn main() -> anyhow::Result<()> {
     }
     println!("{file_count_str} files evaluated");
     println!("{size_str}");
+    if args.show_bytes {
+        println!("{size} bytes");
+    }
     Ok(())
 }
