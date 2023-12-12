@@ -1,11 +1,15 @@
 #![warn(clippy::all, clippy::pedantic)]
 
-use std::path::{Path, PathBuf};
+use std::{
+    ops::Mul,
+    path::{Path, PathBuf},
+};
 
 use anyhow::Context;
 use clap::{Parser, Subcommand, ValueHint};
 use itertools::Itertools;
-use num_format::{Locale, ToFormattedString};
+use num_format::{Locale, SystemLocale, ToFormattedStr, ToFormattedString};
+use once_cell::sync::Lazy;
 
 mod tree;
 
@@ -59,6 +63,54 @@ fn dir_size(dir: &Path) -> anyhow::Result<(u64, u64)> {
     Ok((size, file_sizes.len() as u64))
 }
 
+/// A locale-aware number formatter made with [`num_format`]. This only supports integer-like types.
+/// For floating point types, use [`format_f64`].
+///
+/// # Arguments
+///
+/// * `num` - The number to format.
+///
+/// # Returns
+///
+/// The formatted number as an owned String.
+#[inline(always)]
+fn format_number<N>(num: &N) -> String
+where
+    N: ToFormattedStr,
+{
+    static SYSTEM_LOCALE: Lazy<SystemLocale> =
+        Lazy::new(|| SystemLocale::default().expect("Failed to get system locale"));
+
+    let mut buf = num_format::Buffer::default();
+    buf.write_formatted(num, &*SYSTEM_LOCALE);
+    buf.to_string()
+}
+
+/// Like [`format_number`], but for floats.
+///
+/// # Arguments
+///
+/// * `num` - The number to format.
+/// * `decimal_places` - The number of decimal places to round to.
+#[allow(clippy::cast_possible_truncation)]
+fn format_f64<F, I>(num: F, decimal_places: I) -> String
+where
+    F: Mul<f64, Output = F> + Into<f64> + Copy,
+    I: Into<i32> + Copy,
+{
+    // split into whole and fractional parts
+    let num = num.into();
+    let decimal_places = decimal_places.into();
+
+    let whole = num as i64;
+    let fract = num.fract();
+    // format whole part
+    let whole_str = format_number(&whole);
+    // extract fractional part
+    let fract_str = fract.mul(10.0_f64.powi(decimal_places)) as i64;
+    format!("{whole_str}.{fract_str}")
+}
+
 /// Makes a string from a size in bytes (up to TB), rounding to the nearest 2 decimal places.
 /// If the rounded size has trailing zeros, they are removed (e.g. 1.00 MB -> 1 MB).
 ///
@@ -81,11 +133,13 @@ fn size_in_bytes_pretty_string(size: u64) -> String {
         i += 1;
     }
     let size_abbrv = SIZES[i];
-    if i == 0 {
-        format!("{size} {size_abbrv}")
+    let size_str = if i == 0 {
+        #[allow(clippy::cast_possible_truncation)]
+        format_number(&(size as i64))
     } else {
-        format!("{size:.2} {size_abbrv}")
-    }
+        format_f64(size, 2)
+    };
+    format!("{size_str} {size_abbrv}")
 }
 
 fn main() -> anyhow::Result<()> {
@@ -122,7 +176,7 @@ fn main() -> anyhow::Result<()> {
     println!("{file_count_str} files evaluated");
     println!("{size_str}");
     if args.show_bytes {
-        println!("{size} bytes");
+        println!("{} bytes", format_number(&size));
     }
     Ok(())
 }
