@@ -1,4 +1,5 @@
 use std::{
+    cmp::Ordering,
     io,
     iter::once,
     num::{IntErrorKind, ParseIntError},
@@ -9,6 +10,7 @@ use std::{
 use chrono::{DateTime, Local};
 use clap::{Args, ValueEnum};
 use itertools::Itertools;
+use walkdir::DirEntry;
 
 use crate::{dir_size, size_in_bytes_pretty_string};
 
@@ -44,6 +46,18 @@ pub enum SortType {
 impl Default for SortType {
     fn default() -> Self {
         Self::Name
+    }
+}
+
+impl SortType {
+    pub fn sort_entries(self, a: &DirEntry, b: &DirEntry) -> anyhow::Result<Ordering> {
+        let ord = match self {
+            SortType::Name => a.file_name().cmp(b.file_name()),
+            SortType::Size => dir_entry_size(b)?.cmp(&dir_entry_size(a)?),
+            SortType::ModifiedDate => b.metadata()?.modified()?.cmp(&a.metadata()?.modified()?),
+            SortType::CreatedDate => b.metadata()?.created()?.cmp(&a.metadata()?.created()?),
+        };
+        Ok(ord)
     }
 }
 
@@ -121,7 +135,7 @@ fn file_is_hidden(path: &Path) -> io::Result<bool> {
 /// # Returns
 ///
 /// The size of the entry, in bytes.
-fn dir_entry_size(entry: &walkdir::DirEntry) -> anyhow::Result<u64> {
+fn dir_entry_size(entry: &DirEntry) -> anyhow::Result<u64> {
     if entry.file_type().is_dir() {
         dir_size(entry.path()).map(|(size, _)| size)
     } else {
@@ -163,18 +177,9 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
             // sorts by directories first, then by specified sorting
             // if an error happens while sorting, it gets sent to the bottom
             // I used closures to allow using "?"
-            let secondary_ordering = match sort_type {
-                SortType::Name => Ok::<_, anyhow::Error>(a.file_name().cmp(b.file_name())),
-                SortType::Size => dir_entry_size(b)
-                    .and_then(|b_size| dir_entry_size(a).map(|a_size| b_size.cmp(&a_size))),
-                SortType::ModifiedDate => {
-                    (|| Ok(b.metadata()?.modified()?.cmp(&a.metadata()?.modified()?)))()
-                }
-                SortType::CreatedDate => {
-                    (|| Ok(b.metadata()?.created()?.cmp(&a.metadata()?.created()?)))()
-                }
-            }
-            .unwrap_or(std::cmp::Ordering::Less);
+            let secondary_ordering = sort_type
+                .sort_entries(a, b)
+                .unwrap_or(std::cmp::Ordering::Less);
             b.path()
                 .is_dir()
                 .cmp(&a.path().is_dir())
