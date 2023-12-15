@@ -20,9 +20,9 @@ mod tree;
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
 struct Args {
-    /// The directory to calculate the size of.
+    /// The path to calculate the size of.
     #[arg(default_value = ".", value_hint = ValueHint::DirPath)]
-    dir: PathBuf,
+    path: PathBuf,
     /// Show the size of the directory in bytes.
     #[arg(short = 'b', long)]
     show_bytes: bool,
@@ -146,14 +146,8 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     #[cfg(debug_assertions)]
     println!("{args:?}");
-    if !args.dir.is_dir() {
-        return Err(anyhow::anyhow!(
-            "error: {} is not a directory",
-            args.dir.display()
-        ));
-    }
-    let canon_dir =
-        dunce::canonicalize(args.dir).context("A fatal error occurred resolving directory path")?;
+    let canon_dir = dunce::canonicalize(args.path)
+        .context("A fatal error occurred resolving directory path")?;
     // TODO: symbols
     let mut sp = spinners::Spinner::new(spinners::Spinners::Point, "Calculating size...".into());
     let (size, file_count) = dir_size(&canon_dir)?;
@@ -163,17 +157,25 @@ fn main() -> anyhow::Result<()> {
     if let Some(cmd) = args.command {
         match cmd {
             Commands::Tree(args) => {
-                let mut sp =
-                    spinners::Spinner::new(spinners::Spinners::Point, "Generating tree...".into());
-                let tree_string = tree::generate_tree_string(&canon_dir, args);
-                sp.stop_with_message("Generated tree!".into());
-                println!("{tree_string}");
+                if canon_dir.is_dir() {
+                    let mut sp = spinners::Spinner::new(
+                        spinners::Spinners::Point,
+                        "Generating tree...".into(),
+                    );
+                    let tree_string = tree::generate_tree_string(&canon_dir, args);
+                    sp.stop_with_message("Generated tree!".into());
+                    println!("{tree_string}");
+                } else {
+                    println!("No tree generated (not a directory)");
+                    println!("{}", canon_dir.display());
+                }
             }
         }
     } else {
         println!("{}", canon_dir.display());
     }
-    println!("{file_count_str} files evaluated");
+    let plural_files = if file_count == 1 { "file" } else { "files" };
+    println!("{file_count_str} {plural_files} evaluated");
     println!("{size_str}");
     if args.show_bytes {
         println!("{} bytes", format_number(&size));
