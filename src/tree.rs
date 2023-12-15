@@ -111,6 +111,24 @@ fn file_is_hidden(path: &Path) -> io::Result<bool> {
         .map(|s| s.to_str().is_some_and(|s| s.starts_with('.')))
 }
 
+/// Calculates the size of a [`walkdir::DirEntry`], recursing into directories if necessary.
+/// For files, this is just the file length. For directories, it is the recursive size of the directory.
+///
+/// # Arguments
+///
+/// * `entry` - The entry to calculate the size of.
+///
+/// # Returns
+///
+/// The size of the entry, in bytes.
+fn dir_entry_size(entry: &walkdir::DirEntry) -> anyhow::Result<u64> {
+    if entry.file_type().is_dir() {
+        dir_size(entry.path()).map(|(size, _)| size)
+    } else {
+        entry.metadata().map(|m| m.len()).map_err(Into::into)
+    }
+}
+
 /// Generates a tree of the directory, up to the specified depth. This function is not parallelized.
 ///
 /// # Arguments
@@ -146,8 +164,9 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
             // if an error happens while sorting, it gets sent to the bottom
             // I used closures to allow using "?"
             let secondary_ordering = match sort_type {
-                SortType::Name => Ok::<_, io::Error>(a.file_name().cmp(b.file_name())),
-                SortType::Size => (|| Ok(b.metadata()?.len().cmp(&a.metadata()?.len())))(),
+                SortType::Name => Ok::<_, anyhow::Error>(a.file_name().cmp(b.file_name())),
+                SortType::Size => dir_entry_size(b)
+                    .and_then(|b_size| dir_entry_size(a).map(|a_size| b_size.cmp(&a_size))),
                 SortType::ModifiedDate => {
                     (|| Ok(b.metadata()?.modified()?.cmp(&a.metadata()?.modified()?)))()
                 }
