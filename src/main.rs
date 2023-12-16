@@ -6,6 +6,7 @@ use std::{
 };
 
 use anyhow::Context;
+use cached::proc_macro::cached;
 use clap::{Parser, Subcommand, ValueHint};
 use itertools::Itertools;
 use num_format::{Locale, SystemLocale, ToFormattedStr, ToFormattedString};
@@ -37,7 +38,10 @@ enum Commands {
 }
 
 /// Computes the size of a directory, returning the size in bytes and the number of files.
-/// This function is parallelized using rayon.
+/// The results of this function are cached using [`cached`] for performance.
+///
+/// There is a mild overhead when calculating the initial size, but subsequent calls will
+/// be much faster (especially when generating a large tree sorted by size).
 ///
 /// # Arguments
 ///
@@ -46,6 +50,11 @@ enum Commands {
 /// # Returns
 ///
 /// A tuple containing the size (in bytes) and the number of files.
+#[cached(
+    result = true,
+    key = "String",
+    convert = r##"{ dir.display().to_string() }"##
+)]
 fn dir_size(dir: &Path) -> anyhow::Result<(u64, u64)> {
     // rayon could parallelize this, but it needs par_bridge() and ends up being slower
     // than just doing it sequentially
