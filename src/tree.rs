@@ -18,7 +18,7 @@ use crate::{dir_size, size_in_bytes_pretty_string};
 #[derive(Args, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 #[allow(clippy::module_name_repetitions)]
 pub struct TreeArgs {
-    #[arg(short, long, value_hint = clap::ValueHint::Other, value_parser = tree_depth_validator, num_args = 0..=1, require_equals = true, default_value = "1")]
+    #[arg(short, long, value_hint = clap::ValueHint::Other, value_parser = tree_depth_validator, num_args = 1, require_equals = true, default_value = "1")]
     /// The depth of the tree to generate
     depth: usize,
     /// Exclude hidden files from the tree.
@@ -80,16 +80,16 @@ pub fn tree_depth_validator(s: &str) -> Result<usize, String> {
     s.parse()
         .map_err(|err: ParseIntError| match err.kind() {
             IntErrorKind::Empty => {
-                "No value provided. Either provide a value or remove the '=' from the flag.".into()
+                "No value provided. Either provide a value with = or remove the flag.".into()
             }
             IntErrorKind::PosOverflow => {
-                format!("Tree depth must be less than {}", TREE_RANGE.end())
+                format!("Depth must be less than {}", TREE_RANGE.end())
             }
             IntErrorKind::InvalidDigit => {
                 // I could just check the first character, but this way gives a more helpful error message
                 if let Ok(digit) = s.parse::<i64>() {
                     if digit < 0 {
-                        return "Negative values are not allowed".into();
+                        return "Negative depth values are not allowed".into();
                     }
                 };
                 err.to_string()
@@ -101,7 +101,7 @@ pub fn tree_depth_validator(s: &str) -> Result<usize, String> {
                 Ok(depth)
             } else {
                 Err(format!(
-                    "Tree depth must be greater than {}",
+                    "Depth must be greater than or equal to {}",
                     TREE_RANGE.start()
                 ))
             }
