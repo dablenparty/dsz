@@ -168,6 +168,11 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         show_size,
     } = args;
 
+    // TODO: extract all needed dir entry data into a struct and use that instead of the entry
+    // this will save a lot of extra calls to the filesystem as well as make the tuple
+    // windows iterator a little more memory efficient (as long as the structs are made first)
+    //? consider making a struct that implements Copy AND Clone (i.e. it allocates on the stack)
+
     // these long and funky iterators are used to make a sliding window of the entries in
     // the walker that guarantees every entry will appear in the left side of the window
     // exactly once. this means that we can use the next entry to determine if the current
