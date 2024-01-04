@@ -27,9 +27,12 @@ pub struct TreeArgs {
     /// Show file size in the tree.
     #[arg(short = 'i', long)]
     show_size: bool,
-    /// Sort the tree by name, file size, or file date.
+    /// Sort the tree by name (A-Z), file size (big->small), or file date (newest->oldest)
     #[arg(short, long = "sort", value_hint = clap::ValueHint::Other, default_value = "name")]
     sort_type: SortType,
+    /// Reverse the sorting order.
+    #[arg(short, long = "reverse")]
+    reverse_sort: bool,
 }
 
 /// Represents the sorting type for the tree.
@@ -166,6 +169,7 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         sort_type,
         no_hidden,
         show_size,
+        reverse_sort,
     } = args;
 
     // TODO: extract all needed dir entry data into a struct and use that instead of the entry
@@ -185,10 +189,13 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
             let secondary_ordering = sort_type
                 .sort_entries(a, b)
                 .unwrap_or(std::cmp::Ordering::Less);
-            b.path()
-                .is_dir()
-                .cmp(&a.path().is_dir())
-                .then(secondary_ordering)
+            b.path().is_dir().cmp(&a.path().is_dir()).then_with(|| {
+                if reverse_sort {
+                    secondary_ordering.reverse()
+                } else {
+                    secondary_ordering
+                }
+            })
         })
         .max_depth(depth)
         .into_iter()
