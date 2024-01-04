@@ -93,13 +93,15 @@ fn dir_size(dir: &Path) -> anyhow::Result<(u64, u64)> {
 /// # Returns
 ///
 /// The formatted number as an owned String.
-#[inline(always)]
 fn format_number<N>(num: &N) -> String
 where
     N: ToFormattedStr,
 {
-    static SYSTEM_LOCALE: Lazy<SystemLocale> =
-        Lazy::new(|| SystemLocale::default().expect("Failed to get system locale"));
+    static SYSTEM_LOCALE: Lazy<SystemLocale> = Lazy::new(|| {
+        SystemLocale::default()
+            .or_else(|_| SystemLocale::from_name("en_US"))
+            .expect("Could not get default system locale or en_US locale")
+    });
 
     let mut buf = num_format::Buffer::default();
     buf.write_formatted(num, &*SYSTEM_LOCALE);
