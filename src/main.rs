@@ -115,21 +115,20 @@ where
 /// * `num` - The number to format.
 /// * `decimal_places` - The number of decimal places to round to.
 #[allow(clippy::cast_possible_truncation)]
-fn format_f64<F, I>(num: F, decimal_places: I) -> String
+fn format_f64<F>(num: F) -> String
 where
     F: Mul<f64, Output = F> + Into<f64> + Copy,
-    I: Into<i32> + Copy,
 {
-    // split into whole and fractional parts
-    let num = num.into();
-    let decimal_places = decimal_places.into();
+    const DECIMAL_PLACES: i32 = 2;
+    let num: f64 = num.into();
 
+    // split into whole and fractional parts
     let whole = num as i64;
     let fract = num.fract();
     // format whole part
     let whole_str = format_number(&whole);
     // extract fractional part
-    let fract_str = fract.mul(10.0_f64.powi(decimal_places)) as i64;
+    let fract_str = fract.mul(10.0_f64.powi(DECIMAL_PLACES)) as i64;
     format!("{whole_str}.{fract_str}")
 }
 
@@ -159,7 +158,7 @@ fn size_in_bytes_pretty_string(size: u64) -> String {
         #[allow(clippy::cast_possible_truncation)]
         format_number(&(size as i64))
     } else {
-        format_f64(size, 2)
+        format_f64(size)
     };
     format!("{size_str} {size_abbrv}")
 }
