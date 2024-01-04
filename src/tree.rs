@@ -1,7 +1,6 @@
 use std::{
     cmp::Ordering,
     io,
-    iter::once,
     num::{IntErrorKind, ParseIntError},
     ops::RangeInclusive,
     path::Path,
@@ -9,7 +8,6 @@ use std::{
 
 use chrono::{DateTime, Local};
 use clap::{Args, ValueEnum};
-use itertools::Itertools;
 use walkdir::DirEntry;
 
 use crate::{dir_size, size_in_bytes_pretty_string};
@@ -172,11 +170,7 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         reverse_sort,
     } = args;
 
-    // these long and funky iterators are used to make a sliding window of the entries in
-    // the walker that guarantees every entry will appear in the left side of the window
-    // exactly once. this means that we can use the next entry to determine if the current
-    // entry is the last entry in the directory and display the correct branch symbol.
-    let tree_iter = walkdir::WalkDir::new(root)
+    let mut peekable_tree_iter = walkdir::WalkDir::new(root)
         .sort_by(move |a, b| {
             // sorts by directories first, then by specified sorting
             // if an error happens while sorting, it gets sent to the bottom
@@ -195,72 +189,72 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         .max_depth(depth)
         .into_iter()
         .filter_entry(|e| !no_hidden || !file_is_hidden(e.path()).unwrap_or(false))
-        .skip(1)
+        .skip(1) // skip the root
         .filter_map(std::result::Result::ok)
-        .map(Some)
-        .chain(once(None))
-        .tuple_windows::<(_, _)>()
-        .filter_map(|(e, ne)| e.map(|e| (e, ne)))
-        .map(|(entry, next_entry)| {
-            let entry_path = entry.path();
-            let path_components_count = entry_path.components().count();
-            let depth_diff = path_components_count - root.components().count();
-            // everything should be canonicalized at this point BUT just in case...
-            let file_name = entry_path
-                .file_name()
-                .and_then(std::ffi::OsStr::to_str)
-                .unwrap_or("???");
-            // INDENT size + BRANCH len + file_name len +? size_str len +? date_str len
-            let mut string_builder = String::with_capacity(
-                depth_diff * INDENT.len() + BRANCH.len() + file_name.len() + 10 + 30,
-            );
-            let (indent, branch) = match next_entry {
-                Some(next_entry) => {
-                    let indent = INDENT.repeat(depth_diff - 1);
-                    let branch = if next_entry.path().components().count() < path_components_count {
-                        BRANCH_LAST
-                    } else {
-                        BRANCH
-                    };
-                    (indent, branch)
-                }
-                None => (BRANCH_LAST.repeat(depth_diff - 1), BRANCH_LAST),
-            };
-            string_builder.push_str(&indent);
-            string_builder.push_str(branch);
-            let entry_is_dir = entry.file_type().is_dir();
-            let meta = entry.metadata().ok(); // I don't care about the error, only if the metadata exists
-            let spacer = if meta.is_some() { ' ' } else { '!' };
-            string_builder.push(spacer);
-            if entry_is_dir {
-                string_builder.push('/');
-            };
-            string_builder.push_str(file_name);
-            // only shows size if it's a file or it's a directory that isn't being expanded
-            if depth_diff == depth || !entry_is_dir {
-                if show_size {
-                    let size_str = if entry_is_dir {
-                        dir_size(entry_path).map(|(size, _)| size).ok()
-                    } else {
-                        meta.as_ref().map(std::fs::Metadata::len)
-                    }
-                    .map_or_else(|| String::from("???"), size_in_bytes_pretty_string);
-                    string_builder.push_str(&format!(" - {size_str}"));
-                }
-                let maybe_file_time = match sort_type {
-                    SortType::ModifiedDate => meta.map(|m| m.modified().ok()),
-                    SortType::CreatedDate => meta.map(|m| m.created().ok()),
-                    _ => None,
+        .peekable();
+    let mut branches = Vec::with_capacity(peekable_tree_iter.size_hint().0 + 1);
+    branches.push(root.display().to_string());
+    while let Some(entry) = peekable_tree_iter.next() {
+        let entry_path = entry.path();
+        let path_components_count = entry_path.components().count();
+        let depth_diff = path_components_count - root.components().count();
+        // everything should be canonicalized at this point BUT just in case...
+        let file_name = entry_path
+            .file_name()
+            .and_then(std::ffi::OsStr::to_str)
+            .unwrap_or("???");
+        // INDENT size + BRANCH len + file_name len +? size_str len +? date_str len
+        let mut string_builder = String::with_capacity(
+            depth_diff * INDENT.len() + BRANCH.len() + file_name.len() + 10 + 30,
+        );
+        let next_entry = peekable_tree_iter.peek();
+        let (indent, branch) = match next_entry {
+            Some(next_entry) => {
+                let indent = INDENT.repeat(depth_diff - 1);
+                let branch = if next_entry.path().components().count() < path_components_count {
+                    BRANCH_LAST
+                } else {
+                    BRANCH
                 };
-                if let Some(file_time) = maybe_file_time {
-                    let date_str = file_time.map(DateTime::<Local>::from).map_or_else(
-                        || String::from(" (???)"),
-                        |d| format!(" ({})", d.format("%Y-%m-%d %H:%M:%S")),
-                    );
-                    string_builder.push_str(&date_str);
+                (indent, branch)
+            }
+            None => (BRANCH_LAST.repeat(depth_diff - 1), BRANCH_LAST),
+        };
+        string_builder.push_str(&indent);
+        string_builder.push_str(branch);
+        let entry_is_dir = entry.file_type().is_dir();
+        let meta = entry.metadata().ok(); // I don't care about the error, only if the metadata exists
+        let spacer = if meta.is_some() { ' ' } else { '!' };
+        string_builder.push(spacer);
+        if entry_is_dir {
+            string_builder.push('/');
+        };
+        string_builder.push_str(file_name);
+        // only shows size if it's a file or it's a directory that isn't being expanded
+        if depth_diff == depth || !entry_is_dir {
+            if show_size {
+                let size_str = if entry_is_dir {
+                    dir_size(entry_path).map(|(size, _)| size).ok()
+                } else {
+                    meta.as_ref().map(std::fs::Metadata::len)
                 }
+                .map_or_else(|| String::from("???"), size_in_bytes_pretty_string);
+                string_builder.push_str(&format!(" - {size_str}"));
+            }
+            let maybe_file_time = match sort_type {
+                SortType::ModifiedDate => meta.map(|m| m.modified().ok()),
+                SortType::CreatedDate => meta.map(|m| m.created().ok()),
+                _ => None,
             };
-            string_builder
-        });
-    once(root.display().to_string()).chain(tree_iter).join("\n")
+            if let Some(file_time) = maybe_file_time {
+                let date_str = file_time.map(DateTime::<Local>::from).map_or_else(
+                    || String::from(" (???)"),
+                    |d| format!(" ({})", d.format("%Y-%m-%d %H:%M:%S")),
+                );
+                string_builder.push_str(&date_str);
+            }
+        };
+        branches.push(string_builder);
+    }
+    branches.join("\n")
 }
