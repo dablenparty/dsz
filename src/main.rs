@@ -128,8 +128,14 @@ where
     // format whole part
     let whole_str = format_number(&whole);
     // extract fractional part
-    let fract_str = fract.mul(10.0_f64.powi(DECIMAL_PLACES)) as i64;
-    format!("{whole_str}.{fract_str}")
+    let fract = fract.mul(10.0_f64.powi(DECIMAL_PLACES)) as i64;
+    // format fractional part
+    let fract_str = if fract == 0 {
+        String::new()
+    } else {
+        format!(".{fract:0>2}")
+    };
+    format!("{whole_str}{fract_str}")
 }
 
 /// Makes a string from a size in bytes (up to TB), rounding to the nearest 2 decimal places.
@@ -154,12 +160,7 @@ fn size_in_bytes_pretty_string(size: u64) -> String {
         i += 1;
     }
     let size_abbrv = SIZES[i];
-    let size_str = if i == 0 {
-        #[allow(clippy::cast_possible_truncation)]
-        format_number(&(size as i64))
-    } else {
-        format_f64(size)
-    };
+    let size_str = format_f64(size);
     format!("{size_str} {size_abbrv}")
 }
 
