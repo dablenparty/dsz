@@ -179,10 +179,7 @@ fn dir_entry_size(entry: &DirEntry) -> anyhow::Result<u64> {
 /// # Arguments
 ///
 /// * `root` - The directory to generate the tree of.
-/// * `depth` - The depth of the tree to generate.
-/// * `sort_type` - The sorting to use.
-/// * `no_hidden` - Whether to include hidden files in the tree.
-/// * `show_size` - Whether to show the size of files/folders in the tree.
+/// * `args` - The arguments to use when generating the tree.
 ///
 /// # Returns
 /// The tree as a string.
