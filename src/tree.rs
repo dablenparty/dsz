@@ -51,6 +51,21 @@ impl Default for SortType {
 }
 
 impl SortType {
+    /// Sorts two [`walkdir::DirEntry`]s and returns the ordering.
+    ///
+    /// # Arguments
+    ///
+    /// * `a` - The first entry to compare.
+    /// * `b` - The second entry to compare.
+    ///
+    /// # Returns
+    ///
+    /// The ordering of the two entries.
+    ///
+    /// # Errors
+    ///
+    /// If an error occurs while getting the metadata of the entries. Sorting with [`SortType::Name`]
+    /// should never error.
     pub fn sort_entries(self, a: &DirEntry, b: &DirEntry) -> anyhow::Result<Ordering> {
         let ord = match self {
             SortType::Name => a.file_name().cmp(b.file_name()),
@@ -109,6 +124,21 @@ pub fn tree_depth_validator(s: &str) -> Result<usize, String> {
         })
 }
 
+/// Checks if a file is hidden. On Windows, this will read the file attributes. On other platforms,
+/// it simply checks if the file name starts with a period.
+///
+/// # Arguments
+///
+/// * `path` - The path to check.
+///
+/// # Returns
+///
+/// `true` if the file is hidden, `false` otherwise.
+///
+/// # Errors
+///
+/// If an error occurs while reading the file attributes (on Windows) or while getting the file name
+/// (on other platforms).
 #[cfg(windows)]
 fn file_is_hidden(path: &Path) -> io::Result<bool> {
     // adapted from: https://users.rust-lang.org/t/read-windows-hidden-file-attribute/51180/7
@@ -174,7 +204,6 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         .sort_by(move |a, b| {
             // sorts by directories first, then by specified sorting
             // if an error happens while sorting, it gets sent to the bottom
-            // I used closures to allow using "?"
             let secondary_ordering = sort_type
                 .sort_entries(a, b)
                 .unwrap_or(std::cmp::Ordering::Less);
@@ -203,14 +232,15 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
             .file_name()
             .and_then(std::ffi::OsStr::to_str)
             .unwrap_or("???");
-        // INDENT size + BRANCH len + file_name len +? size_str len +? date_str len
-        let mut string_builder = String::with_capacity(
-            depth_diff * INDENT.len() + BRANCH.len() + file_name.len() + 10 + 30,
-        );
+        let mut string_builder =
+            String::with_capacity(depth_diff * INDENT.len() + BRANCH.len() + file_name.len());
         let next_entry = peekable_tree_iter.peek();
         let (indent, branch) = match next_entry {
             Some(next_entry) => {
                 let indent = INDENT.repeat(depth_diff - 1);
+                // entry      = /path/to/something
+                // next_entry = /path/to
+                // this example would be a BRANCH_LAST
                 let branch = if next_entry.path().components().count() < path_components_count {
                     BRANCH_LAST
                 } else {
