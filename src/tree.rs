@@ -229,8 +229,9 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
             .file_name()
             .and_then(std::ffi::OsStr::to_str)
             .unwrap_or("???");
+        // +2 for spacer and directory indicator
         let mut string_builder =
-            String::with_capacity(depth_diff * INDENT.len() + BRANCH.len() + file_name.len());
+            String::with_capacity(depth_diff * INDENT.len() + BRANCH.len() + file_name.len() + 2);
         let next_entry = peekable_tree_iter.peek();
         let (indent, branch) = match next_entry {
             Some(next_entry) => {
