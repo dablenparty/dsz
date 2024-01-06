@@ -1,9 +1,10 @@
 use std::{
     cmp::Ordering,
+    fmt::Display,
     io,
     num::{IntErrorKind, ParseIntError},
     ops::RangeInclusive,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use chrono::{DateTime, Local};
@@ -174,6 +175,49 @@ fn dir_entry_size(entry: &DirEntry) -> anyhow::Result<u64> {
     }
 }
 
+struct TreeBranch {
+    path: PathBuf,
+    ty: std::fs::FileType,
+}
+
+impl TreeBranch {
+    #[inline]
+    fn file_name(&self) -> Option<&str> {
+        self.path.file_name().and_then(std::ffi::OsStr::to_str)
+    }
+
+    #[inline]
+    fn is_dir(&self) -> bool {
+        self.ty.is_dir()
+    }
+
+    #[inline]
+    fn metadata(&self) -> io::Result<std::fs::Metadata> {
+        std::fs::symlink_metadata(&self.path)
+    }
+}
+
+impl Display for TreeBranch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let file_name = self.file_name().unwrap_or("???");
+        let meta = self.metadata().ok(); // idc about the error
+        let spacer = if meta.is_some() { ' ' } else { '!' };
+        write!(f, "{spacer}")?;
+        if self.is_dir() {
+            write!(f, "/")?;
+        };
+        write!(f, "{file_name}")
+    }
+}
+
+impl From<DirEntry> for TreeBranch {
+    fn from(value: DirEntry) -> Self {
+        let ty = value.file_type();
+        let path = value.into_path();
+        Self { path, ty }
+    }
+}
+
 /// Generates a tree of the directory, up to the specified depth. This function is not parallelized.
 ///
 /// # Arguments
@@ -215,22 +259,15 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         .max_depth(depth)
         .into_iter()
         .filter_entry(|e| !no_hidden || !file_is_hidden(e.path()).unwrap_or(false))
+        .filter_map(|e| e.ok().map(TreeBranch::from))
         .skip(1) // skip the root
-        .filter_map(std::result::Result::ok)
         .peekable();
     let mut branches = Vec::with_capacity(peekable_tree_iter.size_hint().0 + 1);
     branches.push(root.display().to_string());
     while let Some(entry) = peekable_tree_iter.next() {
-        let entry_path = entry.path();
-        let path_components_count = entry_path.components().count();
+        let path_components_count = entry.path.components().count();
         let depth_diff = path_components_count - root.components().count();
         // everything should be canonicalized at this point BUT just in case...
-        let file_name = entry_path
-            .file_name()
-            .and_then(std::ffi::OsStr::to_str)
-            .unwrap_or("???");
-        let mut string_builder =
-            String::with_capacity(depth_diff * INDENT.len() + BRANCH.len() + file_name.len());
         let next_entry = peekable_tree_iter.peek();
         let (indent, branch) = match next_entry {
             Some(next_entry) => {
@@ -238,7 +275,7 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
                 // entry      = /path/to/something
                 // next_entry = /path/to
                 // this example would be a BRANCH_LAST
-                let branch = if next_entry.path().components().count() < path_components_count {
+                let branch = if next_entry.path.components().count() < path_components_count {
                     BRANCH_LAST
                 } else {
                     BRANCH
@@ -247,21 +284,19 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
             }
             None => (BRANCH_LAST.repeat(depth_diff - 1), BRANCH_LAST),
         };
+        let branch_string = entry.to_string();
+        let mut string_builder =
+            String::with_capacity(depth_diff * INDENT.len() + BRANCH.len() + branch_string.len());
         string_builder.push_str(&indent);
         string_builder.push_str(branch);
-        let entry_is_dir = entry.file_type().is_dir();
+        string_builder.push_str(&branch_string);
+        let entry_is_dir = entry.is_dir();
         let meta = entry.metadata().ok(); // I don't care about the error, only if the metadata exists
-        let spacer = if meta.is_some() { ' ' } else { '!' };
-        string_builder.push(spacer);
-        if entry_is_dir {
-            string_builder.push('/');
-        };
-        string_builder.push_str(file_name);
-        // only shows size if it's a file or it's a directory that isn't being expanded
+                                          // only shows size if it's a file or it's a directory that isn't being expanded
         if depth_diff == depth || !entry_is_dir {
             if show_size {
                 let size_str = if entry_is_dir {
-                    dir_size(entry_path).map(|(size, _)| size).ok()
+                    dir_size(&entry.path).map(|(size, _)| size).ok()
                 } else {
                     meta.as_ref().map(std::fs::Metadata::len)
                 }
