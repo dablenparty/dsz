@@ -8,7 +8,6 @@ use std::{
 use anyhow::Context;
 use cached::proc_macro::cached;
 use clap::{Parser, Subcommand, ValueHint};
-use itertools::Itertools;
 use num_format::{Locale, SystemLocale, ToFormattedStr, ToFormattedString};
 use once_cell::sync::Lazy;
 
@@ -66,21 +65,13 @@ fn path_arg_validator(s: &str) -> Result<PathBuf, String> {
     key = "String",
     convert = r##"{ dir.display().to_string() }"##
 )]
-fn dir_size(dir: &Path) -> anyhow::Result<(u64, u64)> {
-    // rayon could parallelize this, but it needs par_bridge() and ends up being slower
-    // than just doing it sequentially
-    let file_sizes: Vec<u64> = walkdir::WalkDir::new(dir)
+fn dir_size(dir: &Path) -> walkdir::Result<(u64, u64)> {
+    walkdir::WalkDir::new(dir)
         .into_iter()
-        .map_ok(|entry| {
-            entry
-                .metadata()
-                .map(|f| f.len())
-                .with_context(|| format!("Error while reading entry {}", entry.path().display()))
+        .map(|entry| entry?.metadata().map(|f| f.len()))
+        .try_fold((0u64, 0u64), |(size, count), s| {
+            s.map(|s| (size + s, count + 1))
         })
-        .collect::<Result<Result<_, _>, _>>()??;
-    // parallelizing this part makes very little difference
-    let size = file_sizes.iter().sum();
-    Ok((size, file_sizes.len() as u64))
 }
 
 /// A locale-aware number formatter made with [`num_format`]. This only supports integer-like types.

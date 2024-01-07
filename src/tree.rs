@@ -166,11 +166,11 @@ fn file_is_hidden(path: &Path) -> io::Result<bool> {
 /// # Returns
 ///
 /// The size of the entry, in bytes.
-fn dir_entry_size(entry: &DirEntry) -> anyhow::Result<u64> {
+fn dir_entry_size(entry: &DirEntry) -> walkdir::Result<u64> {
     if entry.file_type().is_dir() {
         dir_size(entry.path()).map(|(size, _)| size)
     } else {
-        entry.metadata().map(|m| m.len()).map_err(Into::into)
+        entry.metadata().map(|m| m.len())
     }
 }
 
@@ -222,13 +222,13 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
     branches.push(root.display().to_string());
     while let Some(entry) = peekable_tree_iter.next() {
         let entry_path = entry.path();
-        let path_components_count = entry_path.components().count();
-        let depth_diff = path_components_count - root.components().count();
         // everything should be canonicalized at this point BUT just in case...
         let file_name = entry_path
             .file_name()
             .and_then(std::ffi::OsStr::to_str)
             .unwrap_or("???");
+        let path_components_count = entry_path.components().count();
+        let depth_diff = path_components_count - root.components().count();
         // +2 for spacer and directory indicator
         let mut string_builder =
             String::with_capacity(depth_diff * INDENT.len() + BRANCH.len() + file_name.len() + 2);
