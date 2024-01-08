@@ -156,12 +156,14 @@ fn size_in_bytes_pretty_string(size: u64) -> String {
 }
 
 fn main() -> anyhow::Result<()> {
+    const SPINNER: spinners::Spinners = spinners::Spinners::Shark;
+
     let args = Args::parse();
     #[cfg(debug_assertions)]
     println!("{args:?}");
     let canon_dir = args.path;
     // TODO: symbols
-    let mut sp = spinners::Spinner::new(spinners::Spinners::Point, "Calculating size...".into());
+    let mut sp = spinners::Spinner::new(SPINNER, "Calculating size...".into());
     let (size, file_count) = dir_size(&canon_dir)?;
     sp.stop_with_message("Calculated size!".into());
     let size_str = size_in_bytes_pretty_string(size);
@@ -170,10 +172,7 @@ fn main() -> anyhow::Result<()> {
         match cmd {
             Commands::Tree(args) => {
                 if canon_dir.is_dir() {
-                    let mut sp = spinners::Spinner::new(
-                        spinners::Spinners::Point,
-                        "Generating tree...".into(),
-                    );
+                    let mut sp = spinners::Spinner::new(SPINNER, "Generating tree...".into());
                     let tree_string = tree::generate_tree_string(&canon_dir, args);
                     sp.stop_with_message("Generated tree!".into());
                     println!("{tree_string}");
