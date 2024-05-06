@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
-cached = { version = "0.50", features = ["proc_macro"] }
+cached = { version = "0.51", features = ["proc_macro"] }
 chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 dunce = "1.0"
