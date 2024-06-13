@@ -10,9 +10,13 @@ anyhow = "1.0"
 cached = { version = "0.51", features = ["proc_macro"] }
 chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
+cli = { path = "cli" }
 dunce = "1.0"
 itertools = "0.13"
 num-format = { version = "0.4", features = ["with-system-locale"] }
 once_cell = "1.19"
 spinners = "4.1"
 walkdir = "2"
+
+[build-dependencies]
+cli = { path = "cli" }
