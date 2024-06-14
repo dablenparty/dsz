@@ -1,5 +1,10 @@
-use std::{num::{IntErrorKind, ParseIntError}, ops::RangeInclusive, path::PathBuf};
+use std::{
+    num::{IntErrorKind, ParseIntError},
+    ops::RangeInclusive,
+    path::PathBuf,
+};
 
+use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum, ValueHint};
 
 /// dsz, short for directory size, does as its name suggests: it calculates the size of a directory by
@@ -28,7 +33,9 @@ pub enum Commands {
 fn path_arg_validator(s: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(s);
     if path.exists() {
-        Ok(path)
+        dunce::canonicalize(path)
+            .context("Failed to canonicalize path")
+            .map_err(|e| e.to_string())
     } else {
         Err(format!("Path '{s}' does not exist"))
     }
