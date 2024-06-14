@@ -4,10 +4,11 @@ version = "0.4.2"
 edition = "2021"
 
 [workspace.dependencies]
+anyhow = "1.0"
 clap = { version = "4", features = ["derive"] }
 
 [dependencies]
-anyhow = "1.0"
+anyhow.workspace = true
 cached = { version = "0.51", features = ["proc_macro"] }
 chrono = "0.4"
 clap.workspace = true
@@ -20,4 +21,7 @@ spinners = "4.1"
 walkdir = "2"
 
 [build-dependencies]
+anyhow.workspace = true
+clap.workspace = true
+clap_complete = "4"
 cli = { path = "cli" }
