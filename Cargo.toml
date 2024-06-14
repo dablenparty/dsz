@@ -11,6 +11,11 @@ path = "src/main.rs"
 [[bin]]
 name = "dsz-completion"
 path = "src/bin/completion.rs"
+required-features = ["completion"]
+
+[features]
+default = []
+completion = ["clap_complete"]
 
 [workspace.dependencies]
 anyhow = "1.0"
@@ -21,6 +26,7 @@ anyhow.workspace = true
 cached = { version = "0.51", features = ["proc_macro"] }
 chrono = "0.4"
 clap.workspace = true
+clap_complete = { version = "4", optional = true }
 cli = { path = "cli" }
 itertools = "0.13"
 num-format = { version = "0.4", features = ["with-system-locale"] }
