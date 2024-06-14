@@ -1,51 +1,13 @@
 #![warn(clippy::all, clippy::pedantic)]
 
-use std::{
-    ops::Mul,
-    path::{Path, PathBuf},
-};
+use std::{ops::Mul, path::Path};
 
-use anyhow::Context;
 use cached::proc_macro::cached;
-use clap::{Parser, Subcommand, ValueHint};
+use clap::Parser;
 use num_format::{Locale, SystemLocale, ToFormattedStr, ToFormattedString};
 use once_cell::sync::Lazy;
 
 mod tree;
-
-/// dsz, short for directory size, does as its name suggests: it calculates the size of a directory by
-/// summing the sizes of all files in it. dsz can also generate a visual tree of the directory,
-/// given you're on a terminal that supports unicode.
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-#[command(propagate_version = true)]
-struct Args {
-    /// The path to calculate the size of.
-    #[arg(default_value = ".", value_hint = ValueHint::AnyPath, value_parser = path_arg_validator)]
-    path: PathBuf,
-    /// Show the size of the directory in bytes.
-    #[arg(short = 'b', long)]
-    show_bytes: bool,
-    /// An optional subcommand.
-    #[command(subcommand)]
-    command: Option<Commands>,
-}
-
-#[derive(Subcommand, Debug)]
-enum Commands {
-    Tree(tree::TreeArgs),
-}
-
-fn path_arg_validator(s: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(s);
-    if path.exists() {
-        dunce::canonicalize(s)
-            .context("Failed to canonicalize path")
-            .map_err(|e| e.to_string())
-    } else {
-        Err(format!("Path '{s}' does not exist"))
-    }
-}
 
 /// Computes the size of a directory, returning the size in bytes and the number of files.
 /// The results of this function are cached using [`cached`] for performance.
@@ -158,7 +120,7 @@ fn size_in_bytes_pretty_string(size: u64) -> String {
 fn main() -> anyhow::Result<()> {
     const SPINNER: spinners::Spinners = spinners::Spinners::Shark;
 
-    let args = Args::parse();
+    let args = cli::Args::parse();
     #[cfg(debug_assertions)]
     println!("{args:?}");
     let canon_dir = args.path;
@@ -170,7 +132,7 @@ fn main() -> anyhow::Result<()> {
     let file_count_str = file_count.to_formatted_string(&Locale::en);
     if let Some(cmd) = args.command {
         match cmd {
-            Commands::Tree(args) => {
+            cli::Commands::Tree(args) => {
                 if canon_dir.is_dir() {
                     let mut sp = spinners::Spinner::new(SPINNER, "Generating tree...".into());
                     let tree_string = tree::generate_tree_string(&canon_dir, args);

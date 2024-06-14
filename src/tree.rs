@@ -1,127 +1,35 @@
-use std::{
-    cmp::Ordering,
-    io,
-    num::{IntErrorKind, ParseIntError},
-    ops::RangeInclusive,
-    path::Path,
-};
+use std::{cmp::Ordering, io, path::Path};
 
 use chrono::{DateTime, Local};
-use clap::{Args, ValueEnum};
+use cli::{SortType, TreeArgs};
 use walkdir::DirEntry;
 
 use crate::{dir_size, size_in_bytes_pretty_string};
 
-/// Displays a visual tree of the directory, up to the specified depth. WARNING: this may be slow
-#[derive(Args, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
-#[allow(clippy::module_name_repetitions)]
-pub struct TreeArgs {
-    #[arg(short, long, value_hint = clap::ValueHint::Other, value_parser = tree_depth_validator, num_args = 1, require_equals = true, default_value = "1")]
-    /// The depth of the tree to generate
-    depth: usize,
-    /// Exclude hidden files from the tree.
-    #[arg(short, long)]
-    no_hidden: bool,
-    /// Show file size in the tree.
-    #[arg(short = 'i', long)]
-    show_size: bool,
-    /// Sort the tree by name (A-Z), file size (big->small), or file date (newest->oldest)
-    #[arg(short, long = "sort", value_hint = clap::ValueHint::Other, default_value = "name")]
-    sort_type: SortType,
-    /// Reverse the sorting order.
-    #[arg(short, long = "reverse")]
-    reverse_sort: bool,
-}
-
-/// Represents the sorting type for the tree.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, ValueEnum)]
-pub enum SortType {
-    Name,
-    Size,
-    #[value(name = "modified")]
-    ModifiedDate,
-    #[value(name = "created")]
-    CreatedDate,
-}
-
-impl Default for SortType {
-    fn default() -> Self {
-        Self::Name
-    }
-}
-
-impl SortType {
-    /// Sorts two [`walkdir::DirEntry`]s and returns the ordering.
-    ///
-    /// # Arguments
-    ///
-    /// * `a` - The first entry to compare.
-    /// * `b` - The second entry to compare.
-    ///
-    /// # Returns
-    ///
-    /// The ordering of the two entries.
-    ///
-    /// # Errors
-    ///
-    /// If an error occurs while getting the metadata of the entries. Sorting with [`SortType::Name`]
-    /// should never error.
-    pub fn sort_entries(self, a: &DirEntry, b: &DirEntry) -> anyhow::Result<Ordering> {
-        let ord = match self {
-            SortType::Name => a.file_name().cmp(b.file_name()),
-            SortType::Size => dir_entry_size(b)?.cmp(&dir_entry_size(a)?),
-            SortType::ModifiedDate => b.metadata()?.modified()?.cmp(&a.metadata()?.modified()?),
-            SortType::CreatedDate => b.metadata()?.created()?.cmp(&a.metadata()?.created()?),
-        };
-        Ok(ord)
-    }
-}
-
-/// Checks if a string can be parsed into a `usize` and is greater than 1, returning an error if it can't.
-///
-/// This function is used as a value parser for clap and is not meant to be used directly, but the point
-/// of it is to provide a more helpful error message than the default messages.
+/// Sorts two [`walkdir::DirEntry`]s and returns the ordering.
 ///
 /// # Arguments
 ///
-/// * `s` - The string to parse.
+/// * `sort_type` - The type of sorting to use. This determines how the entries are compared.
+/// * `a` - The first entry to compare.
+/// * `b` - The second entry to compare.
 ///
 /// # Returns
 ///
-/// The parsed value, or an error if the string couldn't be parsed or the value was less than 1.
-#[allow(clippy::module_name_repetitions)]
-pub fn tree_depth_validator(s: &str) -> Result<usize, String> {
-    // insane? yes. does it work? also yes, as long as your computer doesn't explode.
-    const TREE_RANGE: RangeInclusive<usize> = 1..=usize::MAX;
-    s.parse()
-        .map_err(|err: ParseIntError| match err.kind() {
-            IntErrorKind::Empty => {
-                "No value provided. Either provide a value with = or remove the flag.".into()
-            }
-            IntErrorKind::PosOverflow => {
-                format!("Depth must be less than {}", TREE_RANGE.end())
-            }
-            IntErrorKind::InvalidDigit => {
-                // I could just check the first character, but this way gives a more helpful error message
-                if let Ok(digit) = s.parse::<i64>() {
-                    if digit < 0 {
-                        return "Negative depth values are not allowed".into();
-                    }
-                };
-                err.to_string()
-            }
-            _ => err.to_string(),
-        })
-        .and_then(|depth| {
-            if TREE_RANGE.contains(&depth) {
-                Ok(depth)
-            } else {
-                Err(format!(
-                    "Depth must be greater than or equal to {}",
-                    TREE_RANGE.start()
-                ))
-            }
-        })
+/// The ordering of the two entries.
+///
+/// # Errors
+///
+/// If an error occurs while getting the metadata of the entries. Sorting with [`SortType::Name`]
+/// should never error.
+pub fn sort_entries(sort_type: SortType, a: &DirEntry, b: &DirEntry) -> anyhow::Result<Ordering> {
+    let ord = match sort_type {
+        SortType::Name => a.file_name().cmp(b.file_name()),
+        SortType::Size => dir_entry_size(b)?.cmp(&dir_entry_size(a)?),
+        SortType::ModifiedDate => b.metadata()?.modified()?.cmp(&a.metadata()?.modified()?),
+        SortType::CreatedDate => b.metadata()?.created()?.cmp(&a.metadata()?.created()?),
+    };
+    Ok(ord)
 }
 
 /// Checks if a file is hidden. On Windows, this will read the file attributes. On other platforms,
@@ -201,9 +109,8 @@ pub fn generate_tree_string(root: &Path, args: TreeArgs) -> String {
         .sort_by(move |a, b| {
             // sorts by directories first, then by specified sorting
             // if an error happens while sorting, it gets sent to the bottom
-            let secondary_ordering = sort_type
-                .sort_entries(a, b)
-                .unwrap_or(std::cmp::Ordering::Less);
+            let secondary_ordering =
+                sort_entries(sort_type, a, b).unwrap_or(std::cmp::Ordering::Less);
             b.path().is_dir().cmp(&a.path().is_dir()).then_with(|| {
                 if reverse_sort {
                     secondary_ordering.reverse()

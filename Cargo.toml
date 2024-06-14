@@ -3,13 +3,14 @@ name = "dsz"
 version = "0.4.2"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[workspace.dependencies]
+clap = { version = "4", features = ["derive"] }
 
 [dependencies]
 anyhow = "1.0"
 cached = { version = "0.51", features = ["proc_macro"] }
 chrono = "0.4"
-clap = { version = "4", features = ["derive"] }
+clap.workspace = true
 cli = { path = "cli" }
 dunce = "1.0"
 itertools = "0.13"
