@@ -2,6 +2,15 @@
 name = "dsz"
 version = "0.4.2"
 edition = "2021"
+default-run = "dsz"
+
+[[bin]]
+name = "dsz"
+path = "src/main.rs"
+
+[[bin]]
+name = "dsz-completion"
+path = "src/bin/completion.rs"
 
 [workspace.dependencies]
 anyhow = "1.0"
