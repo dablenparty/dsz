@@ -1,19 +1,22 @@
 #![cfg(feature = "completion")]
 
-use clap::CommandFactory;
+use clap::{CommandFactory, Parser};
 use clap_complete::shells;
+
+#[derive(Debug, Parser)]
+struct CompletionCli {
+    #[arg(required = true)]
+    shell: shells::Shell,
+}
 
 fn main() -> anyhow::Result<()> {
     const PKG_NAME: &str = env!("CARGO_PKG_NAME");
-    const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-    // TODO: support other shells (the enum already has impl FromStr)
-
-    println!("# {PKG_NAME} {PKG_VERSION} completion script for Zsh");
+    let CompletionCli { shell } = CompletionCli::parse();
 
     let mut cmd = cli::Args::command();
 
-    clap_complete::generate(shells::Zsh, &mut cmd, PKG_NAME, &mut std::io::stdout());
+    clap_complete::generate(shell, &mut cmd, PKG_NAME, &mut std::io::stdout());
 
     Ok(())
 }
