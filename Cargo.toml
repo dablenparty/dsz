@@ -9,7 +9,7 @@ name = "dsz"
 path = "src/main.rs"
 
 [[bin]]
-name = "dsz-completion"
+name = "completion"
 path = "src/bin/completion.rs"
 required-features = ["completion"]
 
@@ -23,7 +23,7 @@ clap = { version = "4", features = ["derive"] }
 
 [dependencies]
 anyhow.workspace = true
-cached = { version = "0.51", features = ["proc_macro"] }
+cached = { version = "0.52", features = ["proc_macro"] }
 chrono = "0.4"
 clap.workspace = true
 clap_complete = { version = "4", optional = true }
