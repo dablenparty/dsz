@@ -15,7 +15,7 @@ use clap::{Parser, Subcommand, ValueEnum, ValueHint};
 #[command(propagate_version = true)]
 pub struct Args {
     /// The path to calculate the size of.
-    #[arg(default_value = ".", value_hint = ValueHint::AnyPath, value_parser = path_arg_validator)]
+    #[arg(default_value = ".", value_hint = ValueHint::DirPath, value_parser = path_arg_validator)]
     pub path: PathBuf,
     /// Show the size of the directory in bytes.
     #[arg(short = 'b', long)]

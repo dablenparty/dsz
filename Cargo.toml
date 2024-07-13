@@ -9,7 +9,7 @@ name = "dsz"
 path = "src/main.rs"
 
 [[bin]]
-name = "dsz-completion"
+name = "completion"
 path = "src/bin/completion.rs"
 required-features = ["completion"]
 
@@ -41,3 +41,5 @@ anyhow.workspace = true
 clap.workspace = true
 clap_complete = "4"
 cli = { path = "cli" }
+# winapi's last update broke num-format, it requires this feature
+winapi = { version="0.3.9", features=["errhandlingapi"] }
