@@ -11,7 +11,7 @@ use clap::{Parser, Subcommand, ValueEnum, ValueHint};
 /// summing the sizes of all files in it. dsz can also generate a visual tree of the directory,
 /// given you're on a terminal that supports unicode.
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(name = "dsz", author, version, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct Args {
     /// The path to calculate the size of.

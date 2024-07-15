@@ -1,8 +1,12 @@
 [package]
 name = "dsz"
+version.workspace = true
+edition.workspace = true
+default-run = "dsz"
+
+[workspace.package]
 version = "0.4.2"
 edition = "2021"
-default-run = "dsz"
 
 [[bin]]
 name = "dsz"
