@@ -22,6 +22,7 @@ mod tree;
 /// # Returns
 ///
 /// A tuple containing the size (in bytes) and the number of files.
+#[cfg(not(feature = "fd-dev"))]
 #[cached(
     result = true,
     key = "String",
