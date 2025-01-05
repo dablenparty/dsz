@@ -74,11 +74,14 @@ fn file_is_hidden(path: &Path) -> io::Result<bool> {
 /// # Returns
 ///
 /// The size of the entry, in bytes.
-fn dir_entry_size(entry: &DirEntry) -> walkdir::Result<u64> {
+fn dir_entry_size(entry: &DirEntry) -> anyhow::Result<u64> {
     if entry.file_type().is_dir() {
         dir_size(entry.path()).map(|(size, _)| size)
     } else {
-        entry.metadata().map(|m| m.len())
+        entry
+            .metadata()
+            .map(|m| m.len())
+            .map_err(anyhow::Error::from)
     }
 }
 
