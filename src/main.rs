@@ -1,7 +1,9 @@
 #![warn(clippy::all, clippy::pedantic)]
 
-use std::{ops::Mul, path::Path};
+use core::str;
+use std::{ops::Mul, path::Path, process::Command};
 
+use anyhow::Context;
 use cached::proc_macro::cached;
 use clap::Parser;
 use num_format::{Locale, SystemLocale, ToFormattedStr, ToFormattedString};
@@ -28,10 +30,7 @@ mod tree;
     convert = r##"{ dir.display().to_string() }"##
 )]
 fn dir_size(dir: &Path) -> anyhow::Result<(u64, u64)> {
-    use anyhow::Context;
-
-    println!("dir={dir:#?}");
-    let fd_output = std::process::Command::new("fd")
+    let fd_output = Command::new("fd")
         .args([
             "--color=never",
             "--unrestricted",
@@ -46,19 +45,18 @@ fn dir_size(dir: &Path) -> anyhow::Result<(u64, u64)> {
             fd_output.status.code()
         );
     }
-    let fd_str = core::str::from_utf8(&fd_output.stdout)?;
-    return fd_str
+
+    // parse the output lines and read the metadata
+    str::from_utf8(&fd_output.stdout)?
         .lines()
         .map(|l| {
-            std::fs::symlink_metadata(l).with_context(|| format!("failed to get context for {l:?}"))
+            std::fs::symlink_metadata(l)
+                .with_context(|| format!("failed to get metadata for {l:?}"))
         })
         .try_fold((0u64, 0u64), |(size, count), meta_result| {
-            if meta_result.is_err() {
-                println!("err={:?}", meta_result.as_ref().unwrap_err());
-            }
             meta_result.map(|meta| (size + meta.len(), count + 1))
         })
-        .map_err(anyhow::Error::from);
+        .map_err(anyhow::Error::from)
 }
 
 /// A locale-aware number formatter made with [`num_format`]. This only supports integer-like types.
