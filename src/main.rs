@@ -24,19 +24,30 @@ mod tree;
 /// # Returns
 ///
 /// A tuple containing the size (in bytes) and the number of files.
+#[cfg(not(unix))]
 #[cached(
     result = true,
     key = "String",
     convert = r##"{ dir.display().to_string() }"##
 )]
 fn dir_size(dir: &Path) -> anyhow::Result<(u64, u64)> {
+    walkdir::WalkDir::new(dir)
+        .into_iter()
+        .map(|entry| entry?.metadata().map(|f| f.len()))
+        .try_fold((0u64, 0u64), |(size, count), s| {
+            s.map(|s| (size + s, count + 1))
+        })
+        .map_err(anyhow::Error::from)
+}
+
+fn call_fd(dir: impl AsRef<str>) -> anyhow::Result<String> {
     let fd_output = Command::new("fd")
         .args([
             "--color=never",
             "--unrestricted",
             "--absolute-path",
             ".",
-            &dir.to_string_lossy(),
+            dir.as_ref(),
         ])
         .output()?;
     if !fd_output.status.success() {
@@ -45,9 +56,18 @@ fn dir_size(dir: &Path) -> anyhow::Result<(u64, u64)> {
             fd_output.status.code()
         );
     }
+    return Ok(String::from_utf8(fd_output.stdout)?);
+}
 
+#[cfg(unix)]
+#[cached(
+    result = true,
+    key = "String",
+    convert = r##"{ dir.display().to_string() }"##
+)]
+fn dir_size(dir: &Path) -> anyhow::Result<(u64, u64)> {
     // parse the output lines and read the metadata
-    str::from_utf8(&fd_output.stdout)?
+    call_fd(&dir.to_string_lossy())?
         .lines()
         .map(|l| {
             std::fs::symlink_metadata(l)
