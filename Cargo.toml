@@ -20,7 +20,6 @@ required-features = ["completion"]
 [features]
 default = []
 completion = ["clap_complete"]
-fd-dev = []
 
 [workspace.dependencies]
 anyhow = "1.0"
