@@ -28,13 +28,54 @@ mod tree;
     key = "String",
     convert = r##"{ dir.display().to_string() }"##
 )]
-fn dir_size(dir: &Path) -> walkdir::Result<(u64, u64)> {
+fn dir_size(dir: &Path) -> anyhow::Result<(u64, u64)> {
     walkdir::WalkDir::new(dir)
         .into_iter()
         .map(|entry| entry?.metadata().map(|f| f.len()))
         .try_fold((0u64, 0u64), |(size, count), s| {
             s.map(|s| (size + s, count + 1))
         })
+        .map_err(anyhow::Error::from)
+}
+
+#[cfg(feature = "fd-dev")]
+#[cached(
+    result = true,
+    key = "String",
+    convert = r##"{ dir.display().to_string() }"##
+)]
+fn dir_size(dir: &Path) -> anyhow::Result<(u64, u64)> {
+    use anyhow::Context;
+
+    println!("dir={dir:#?}");
+    let fd_output = std::process::Command::new("fd")
+        .args([
+            "--color=never",
+            "--unrestricted",
+            "--absolute-path",
+            ".",
+            &dir.to_string_lossy(),
+        ])
+        .output()?;
+    if !fd_output.status.success() {
+        anyhow::bail!(
+            "Failed to run fd with exit code: {:?}",
+            fd_output.status.code()
+        );
+    }
+    let fd_str = core::str::from_utf8(&fd_output.stdout)?;
+    return fd_str
+        .lines()
+        .map(|l| {
+            std::fs::symlink_metadata(l).with_context(|| format!("failed to get context for {l:?}"))
+        })
+        .try_fold((0u64, 0u64), |(size, count), meta_result| {
+            if meta_result.is_err() {
+                println!("err={:?}", meta_result.as_ref().unwrap_err());
+            }
+            meta_result.map(|meta| (size + meta.len(), count + 1))
+        })
+        .map_err(anyhow::Error::from);
 }
 
 /// A locale-aware number formatter made with [`num_format`]. This only supports integer-like types.
